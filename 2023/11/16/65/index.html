@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="tcp rev + tcp syn send 1234567891011121314151617181920212223242526272829303132333435363738394041424344__dev_xmit_skb (\root\codes\kernel-dev\linux\net\core\dev.c:3760)__dev_queue_xmit (\root\codes\ker">
+<meta property="og:type" content="article">
+<meta property="og:title" content="tcp-ip-rcv-skb-流程分析">
+<meta property="og:url" content="http://www.chaochaogege.com/2023/11/16/65/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="tcp rev + tcp syn send 1234567891011121314151617181920212223242526272829303132333435363738394041424344__dev_xmit_skb (\root\codes\kernel-dev\linux\net\core\dev.c:3760)__dev_queue_xmit (\root\codes\ker">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-23-16-52-49.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-11-07-4.png">
+<meta property="article:published_time" content="2023-11-16T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-11-16T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="net">
+<meta property="article:tag" content="Kernel">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://www.chaochaogege.com/assets/2023-10-23-16-52-49.png">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2023/11/16/65/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>tcp-ip-rcv-skb-流程分析 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2023/11/16/65/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          tcp-ip-rcv-skb-流程分析
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-11-16 00:00:00" itemprop="dateCreated datePublished" datetime="2023-11-16T00:00:00+00:00">2023-11-16</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>tcp rev + tcp syn send</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line">__dev_xmit_skb (\root\codes\kernel-dev\linux\net\core\dev.c:3760)</span><br><span class="line">__dev_queue_xmit (\root\codes\kernel-dev\linux\net\core\dev.c:4310)</span><br><span class="line">dev_queue_xmit (\root\codes\kernel-dev\linux\include\linux\netdevice.h:3082)</span><br><span class="line">neigh_hh_output (\root\codes\kernel-dev\linux\include\net\neighbour.h:529)</span><br><span class="line">neigh_output (\root\codes\kernel-dev\linux\include\net\neighbour.h:543)</span><br><span class="line">ip_finish_output2 (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:238)</span><br><span class="line">__ip_finish_output (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:0)</span><br><span class="line">NF_HOOK_COND (\root\codes\kernel-dev\linux\include\linux\netfilter.h:293)</span><br><span class="line">ip_output (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:439)</span><br><span class="line">dst_output (\root\codes\kernel-dev\linux\include\net\dst.h:458)</span><br><span class="line">    ip_local_out (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:128)</span><br><span class="line">__ip_queue_xmit (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:543)</span><br><span class="line">ip_queue_xmit (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:557)</span><br><span class="line">__tcp_transmit_skb (\root\codes\kernel-dev\linux\net\ipv4\tcp_output.c:1415)</span><br><span class="line">__tcp_send_ack (\root\codes\kernel-dev\linux\net\ipv4\tcp_output.c:4082)</span><br><span class="line">tcp_send_ack (\root\codes\kernel-dev\linux\net\ipv4\tcp_output.c:4088)</span><br><span class="line">tcp_rcv_synsent_state_process (\root\codes\kernel-dev\linux\net\ipv4\tcp_input.c:6363)</span><br><span class="line">tcp_rcv_state_process (\root\codes\kernel-dev\linux\net\ipv4\tcp_input.c:6539)</span><br><span class="line">tcp_v4_do_rcv (\root\codes\kernel-dev\linux\net\ipv4\tcp_ipv4.c:1751)</span><br><span class="line">tcp_v4_rcv (\root\codes\kernel-dev\linux\net\ipv4\tcp_ipv4.c:2150)</span><br><span class="line">ip_protocol_deliver_rcu (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:205)</span><br><span class="line">ip_local_deliver_finish (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:233)</span><br><span class="line">NF_HOOK (\root\codes\kernel-dev\linux\include\linux\netfilter.h:304)</span><br><span class="line">ip_local_deliver (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:254)</span><br><span class="line">dst_input (\root\codes\kernel-dev\linux\include\net\dst.h:468)</span><br><span class="line">ip_sublist_rcv_finish (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:580)</span><br><span class="line">ip_list_rcv_finish (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:631)</span><br><span class="line">ip_sublist_rcv (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:639)</span><br><span class="line">ip_list_rcv (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:674)</span><br><span class="line">__netif_receive_skb_list_ptype (\root\codes\kernel-dev\linux\net\core\dev.c:5570)</span><br><span class="line">__netif_receive_skb_list_core (\root\codes\kernel-dev\linux\net\core\dev.c:5618)</span><br><span class="line">__netif_receive_skb_list (\root\codes\kernel-dev\linux\net\core\dev.c:5670)</span><br><span class="line">netif_receive_skb_list_internal (\root\codes\kernel-dev\linux\net\core\dev.c:5761)</span><br><span class="line">gro_normal_list (\root\codes\kernel-dev\linux\include\net\gro.h:439)</span><br><span class="line">napi_complete_done (\root\codes\kernel-dev\linux\net\core\dev.c:6101)</span><br><span class="line">e1000_clean (\root\codes\kernel-dev\linux\drivers\net\ethernet\intel\e1000\e1000_main.c:3811)</span><br><span class="line">__napi_poll (\root\codes\kernel-dev\linux\net\core\dev.c:6531)</span><br><span class="line">napi_poll (\root\codes\kernel-dev\linux\net\core\dev.c:6598)</span><br><span class="line">net_rx_action (\root\codes\kernel-dev\linux\net\core\dev.c:6731)</span><br><span class="line">__do_softirq (\root\codes\kernel-dev\linux\kernel\softirq.c:553)</span><br><span class="line">invoke_softirq (\root\codes\kernel-dev\linux\kernel\softirq.c:427)</span><br><span class="line">__irq_exit_rcu (\root\codes\kernel-dev\linux\kernel\softirq.c:632)</span><br><span class="line">irq_exit_rcu (\root\codes\kernel-dev\linux\kernel\softirq.c:644)</span><br><span class="line">sysvec_apic_timer_interrupt (\root\codes\kernel-dev\linux\arch\x86\kernel\apic\apic.c:1074)</span><br></pre></td></tr></table></figure>
+<p><img src="/assets/2023-10-23-16-52-49.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup</span>(<span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>,</span></span><br><span class="line"><span class="class">					 <span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">					 <span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, <span class="title">int</span> <span class="title">doff</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">const</span> __<span class="title">be32</span> <span class="title">saddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">const</span> __<span class="title">be32</span> <span class="title">daddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">dport</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">const</span> <span class="title">int</span> <span class="title">dif</span>, <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">bool</span> *<span class="title">refcounted</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">	u16 hnum = ntohs(dport);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line"></span><br><span class="line">	sk = __inet_lookup_established(net, hashinfo, saddr, sport,</span><br><span class="line">				       daddr, hnum, dif, sdif);</span><br><span class="line">	*refcounted = <span class="literal">true</span>;</span><br><span class="line">	<span class="keyword">if</span> (sk)</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	*refcounted = <span class="literal">false</span>;</span><br><span class="line">	<span class="keyword">return</span> __inet_lookup_listener(net, hashinfo, skb, doff, saddr,</span><br><span class="line">				      sport, daddr, hnum, dif, sdif);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>到TCP层后，skb需要转换成 <code>struct sock</code>，从 kernel 协议栈查找skb -&gt; struct sk 映射</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup_established</span>(<span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>,</span></span><br><span class="line"><span class="class">				  <span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">				  <span class="title">const</span> __<span class="title">be32</span> <span class="title">saddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">				  <span class="title">const</span> __<span class="title">be32</span> <span class="title">daddr</span>, <span class="title">const</span> <span class="title">u16</span> <span class="title">hnum</span>,</span></span><br><span class="line"><span class="class">				  <span class="title">const</span> <span class="title">int</span> <span class="title">dif</span>, <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">	INET_ADDR_COOKIE(acookie, saddr, daddr);</span><br><span class="line">	<span class="type">const</span> __portpair ports = INET_COMBINED_PORTS(sport, hnum);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">hlist_nulls_node</span> *<span class="title">node</span>;</span></span><br><span class="line">	<span class="comment">/* Optimize here for direct hit, only listening connections can</span></span><br><span class="line"><span class="comment">	 * have wildcards anyways.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">// hashtable查询</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hash = inet_ehashfn(net, daddr, hnum, saddr, sport);</span><br><span class="line">	<span class="comment">// 找到hashtable桶</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> slot = hash &amp; hashinfo-&gt;ehash_mask;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_ehash_bucket</span> *<span class="title">head</span> =</span> &amp;hashinfo-&gt;ehash[slot];</span><br><span class="line"></span><br><span class="line">begin:</span><br><span class="line">	sk_nulls_for_each_rcu(sk, node, &amp;head-&gt;chain) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_hash != hash)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="keyword">if</span> (likely(inet_match(net, sk, acookie, ports, dif, sdif))) &#123;</span><br><span class="line">			<span class="keyword">if</span> (unlikely(!refcount_inc_not_zero(&amp;sk-&gt;sk_refcnt)))</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			<span class="keyword">if</span> (unlikely(!inet_match(net, sk, acookie,</span><br><span class="line">						 ports, dif, sdif))) &#123;</span><br><span class="line">				sock_gen_put(sk);</span><br><span class="line">				<span class="keyword">goto</span> begin;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">goto</span> found;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * if the nulls value we got at the end of this lookup is</span></span><br><span class="line"><span class="comment">	 * not the expected one, we must restart lookup.</span></span><br><span class="line"><span class="comment">	 * We probably met an item that was moved to another chain.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (get_nulls_value(node) != slot)</span><br><span class="line">		<span class="keyword">goto</span> begin;</span><br><span class="line">out:</span><br><span class="line">	sk = <span class="literal">NULL</span>;</span><br><span class="line">found:</span><br><span class="line">	<span class="keyword">return</span> sk;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>sock#sk_data_ready 回调通知</p>
+<p><img src="/assets/2023-11-07-4.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>注意看左侧callstack，协议栈收到数据后</p>
+<ol>
+<li>tcp_rcv_established
+<ol>
+<li>syn rcv 后进入 established 状态</li>
+<li>tcp_queue_rcv
+<ol>
+<li>__skb_queue_tail</li>
+</ol>
+</li>
+<li>tcp_data_ready</li>
+</ol>
+</li>
+<li>tcp_data_queue
+<ol>
+<li>
+<p>tcp_queue_rcv</p>
+<ol>
+<li>__skb_queue_tail</li>
+</ol>
+</li>
+<li>
+<p>tcp_data_ready</p>
+<ol>
+<li><code>struct sock#sk_data_ready</code>默认是<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/core/sock.c#L3447">sock_def_readable</a></li>
+</ol>
+<p>唤醒</p>
+ <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">sock_def_readable</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket_wq</span> *<span class="title">wq</span>;</span></span><br><span class="line"></span><br><span class="line">	trace_sk_data_ready(sk);</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	wq = rcu_dereference(sk-&gt;sk_wq);</span><br><span class="line">	<span class="comment">// CC-NET-TCP 唤醒 sk 的 waiters</span></span><br><span class="line">	<span class="keyword">if</span> (skwq_has_sleeper(wq))</span><br><span class="line">		wake_up_interruptible_sync_poll(&amp;wq-&gt;wait, EPOLLIN | EPOLLPRI |</span><br><span class="line">						EPOLLRDNORM | EPOLLRDBAND);</span><br><span class="line">	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+</li>
+</ol>
+<h3 id="如何唤醒accept-syscall">如何唤醒accept syscall</h3>
+<p>tcp server运行过程</p>
+<blockquote>
+<p>bind: 分配 port<br>
+listen: Move a socket into listening state.<br>
+blocking accept: thread blocking to require new socket</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">bind();</span><br><span class="line">listen();</span><br><span class="line"><span class="keyword">for</span>(;;) &#123;</span><br><span class="line">     connfd = accept(sockfd, (SA*)&amp;cli, &amp;len);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">proto_ops</span> <span class="title">inet_stream_ops</span> =</span> &#123;</span><br><span class="line">	.family		   = PF_INET,</span><br><span class="line">	.owner		   = THIS_MODULE,</span><br><span class="line">	.release	   = inet_release,</span><br><span class="line">	.bind		   = inet_bind,</span><br><span class="line">	.connect	   = inet_stream_connect,</span><br><span class="line">	.socketpair	   = sock_no_socketpair,</span><br><span class="line">	<span class="comment">// accept syscall 调用到 tcp proto_ops 回调 inet_accept</span></span><br><span class="line">	.accept		   = inet_accept,</span><br><span class="line">	.getname	   = inet_getname,</span><br><span class="line">	.poll		   = tcp_poll,</span><br><span class="line">	.ioctl		   = inet_ioctl,</span><br><span class="line">	.gettstamp	   = sock_gettstamp,</span><br><span class="line">	<span class="comment">// tcp listen</span></span><br><span class="line">	.listen		   = inet_listen,</span><br><span class="line">	.shutdown	   = inet_shutdown,</span><br><span class="line">	.setsockopt	   = sock_common_setsockopt,</span><br><span class="line">	.getsockopt	   = sock_common_getsockopt,</span><br><span class="line">	.sendmsg	   = inet_sendmsg,</span><br><span class="line">	.recvmsg	   = inet_recvmsg,</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_MMU</span></span><br><span class="line">	.mmap		   = tcp_mmap,</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	.splice_eof	   = inet_splice_eof,</span><br><span class="line">	.splice_read	   = tcp_splice_read,</span><br><span class="line">	.read_sock	   = tcp_read_sock,</span><br><span class="line">	.read_skb	   = tcp_read_skb,</span><br><span class="line">	.sendmsg_locked    = tcp_sendmsg_locked,</span><br><span class="line">	.peek_len	   = tcp_peek_len,</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_COMPAT</span></span><br><span class="line">	.compat_ioctl	   = inet_compat_ioctl,</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	.set_rcvlowat	   = tcp_set_rcvlowat,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>注册唤醒回调<br>
+accept blocking<br>
+<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/inet_connection_sock.c#L683">inet_csk_accept</a><br>
+<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/inet_connection_sock.c#L609">prepare_to_wait_exclusive</a></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span></span><br><span class="line"><span class="title function_">prepare_to_wait_exclusive</span><span class="params">(<span class="keyword">struct</span> wait_queue_head *wq_head, <span class="keyword">struct</span> wait_queue_entry *wq_entry, <span class="type">int</span> state)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> flags;</span><br><span class="line">	<span class="type">bool</span> was_empty = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	wq_entry-&gt;flags |= WQ_FLAG_EXCLUSIVE;</span><br><span class="line">	spin_lock_irqsave(&amp;wq_head-&gt;lock, flags);</span><br><span class="line">	<span class="keyword">if</span> (list_empty(&amp;wq_entry-&gt;entry)) &#123;</span><br><span class="line">		was_empty = list_empty(&amp;wq_head-&gt;head);</span><br><span class="line">		__add_wait_queue_entry_tail(wq_head, wq_entry);</span><br><span class="line">	&#125;</span><br><span class="line">	set_current_state(state);</span><br><span class="line">	spin_unlock_irqrestore(&amp;wq_head-&gt;lock, flags);</span><br><span class="line">	<span class="keyword">return</span> was_empty;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="如何唤醒epoll等异步回调机制">如何唤醒epoll等异步回调机制</h3>
+<p>未完待续…</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/net/" rel="tag"># net</a>
+              <a href="/tags/Kernel/" rel="tag"># Kernel</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/11/07/64/" rel="prev" title="epoll触发机制分析">
+      <i class="fa fa-chevron-left"></i> epoll触发机制分析
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2023/12/14/66/" rel="next" title="LVS流量转发模式">
+      LVS流量转发模式 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A6%82%E4%BD%95%E5%94%A4%E9%86%92accept-syscall"><span class="nav-number">1.</span> <span class="nav-text">如何唤醒accept syscall</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A6%82%E4%BD%95%E5%94%A4%E9%86%92epoll%E7%AD%89%E5%BC%82%E6%AD%A5%E5%9B%9E%E8%B0%83%E6%9C%BA%E5%88%B6"><span class="nav-number">2.</span> <span class="nav-text">如何唤醒epoll等异步回调机制</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

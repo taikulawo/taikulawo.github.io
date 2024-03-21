@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="我对Pin 的整体理解 - 为了解决unsafe场景下move问题 提出的必要性 - 不依赖Pin能否做到希望的 不被move ? Pin的作用是防止move，但如果程序员小心处理，那就不会出错。为什么还需要Pin呢？ 既然在某些场景下move是错的，那作为安全的编程语言，就需要显式限制这些场景。不能将安全交给人的直觉保证，这是Rust编译器的责任，不是人的。 反面例子是C++，程序员犯错的时候还">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Rust-Pin提出的必要性-以及我对Pin的认识">
+<meta property="og:url" content="http://www.chaochaogege.com/2021/06/08/54/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="我对Pin 的整体理解 - 为了解决unsafe场景下move问题 提出的必要性 - 不依赖Pin能否做到希望的 不被move ? Pin的作用是防止move，但如果程序员小心处理，那就不会出错。为什么还需要Pin呢？ 既然在某些场景下move是错的，那作为安全的编程语言，就需要显式限制这些场景。不能将安全交给人的直觉保证，这是Rust编译器的责任，不是人的。 反面例子是C++，程序员犯错的时候还">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-06-08T00:00:00.000Z">
+<meta property="article:modified_time" content="2021-07-13T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="Rust">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2021/06/08/54/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Rust-Pin提出的必要性-以及我对Pin的认识 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2021/06/08/54/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Rust-Pin提出的必要性-以及我对Pin的认识
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-06-08 00:00:00" itemprop="dateCreated datePublished" datetime="2021-06-08T00:00:00+00:00">2021-06-08</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2021-07-13 00:00:00" itemprop="dateModified" datetime="2021-07-13T00:00:00+00:00">2021-07-13</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="我对Pin-的整体理解-为了解决unsafe场景下move问题">我对Pin 的整体理解 - 为了解决unsafe场景下move问题</h2>
+<h3 id="提出的必要性-不依赖Pin能否做到希望的-不被move">提出的必要性 - 不依赖Pin能否做到希望的 不被move ?</h3>
+<p>Pin的作用是防止move，但如果程序员小心处理，那就不会出错。为什么还需要Pin呢？</p>
+<p>既然在某些场景下move是错的，那作为安全的编程语言，就需要显式限制这些场景。<strong>不能将安全交给人的直觉</strong>保证，<strong>这是Rust编译器的责任，不是人的</strong>。</p>
+<p>反面例子是C++，程序员犯错的时候还少吗？</p>
+<p>明确一点，即使有Pin，你如果想出 UB，通过 unsafe <strong>一定可以</strong> 做到，我只是想说明，Pin不是银弹，万能药。</p>
+<p>即使别人眼中UB是错的，但目的不同，对正确的理解不同。如果想要的就是UB的结果，那这UB对你而言是正确的，但这种超出语言的范畴，Pin也不是为这种场景（人的主观）而生的。</p>
+<p>在代码整个链路不使用任何unsafe情况下，哪怕没有Pin，你也不会写出UB的代码。编译器的静态检查会教你做人。</p>
+<p>unsafe 作为 rust 的一部分，其存在是有意义的，Pin也主要针对这场景。 （我写的，有点像三段论。。。</p>
+<p>Pin的意义在于，当你不想出错时，通过 Pin 藏起 <code>&amp;mut T</code>，从语法上一定程度限制 unsafe 的危险性。</p>
+<p>为什么限定unsafe，在safe rust中，构造自引用并且用起来都十分困难，UB受到 borrow checker的严格限制。不会由于move特性而导致错误。</p>
+<p>一个例子：</p>
+<blockquote>
+<p>小明你是库tokio的提供者，小红调用小明的函数，该函数利用 unsafe 返回给小红一个结构 X。X的字段 Y 自引用了 &amp;X</p>
+<p>（利用unsafe构造出自引用结构。当然，只是用自引用结构举例子，Pin并不只是用于自引用，比如 tokio-executor 获取 X(task) 的地址，用于 poll 之后的 wake，Pin只是表达不能move）。</p>
+<p>小红之后使用X，进行了它认为正确的move（move在rust中很常见，而且用的是safe的函数，在小红眼里是正确的）。但这时 Y 错误引用到原来的 &amp;X。</p>
+<p>那怎么解决呢？</p>
+<p>小明可以不返回X，而是返回 <code>Pin&lt;X&gt;</code></p>
+</blockquote>
+<p>所以Pin是一种规范，一种交流的<strong>协议</strong>。</p>
+<p>如果全代码链路都可小心翼翼处理move，不出现因为move导致的UB，那 Pin 就不是必须</p>
+<p>还是上面的例子</p>
+<p>小红并没有调用任何 unsafe 的代码，是小明内部使用unsafe，导致了UB</p>
+<p>Pin是为了增强鲁棒性（指控制系统在<strong>一定</strong>（结构，大小）的参数摄动下，维持其它某些性能的特性。<strong>一定</strong>也从侧面佐证上文说的，Pin 不是银弹，万能药，只是从语法上一定程度限制 unsafe 的危险性）</p>
+<p>任何 <strong>非unsafe</strong> 的代码和 <code>Pin</code> 一样，都会被编译器进行静态检查</p>
+<blockquote>
+<p>就比如 future-rs，为什么需要使用 Pin？</p>
+<p>future 的 API 内部完全可以保证不会 move 导致 UB，但是 Future 需要给广大开发者使用，广大开发者很容易在 poll 里面把你的 Future 自引用结构体 move 掉</p>
+</blockquote>
+<hr>
+<p>关于 <code>self referential part</code></p>
+<p>编写自引用结构，并不是一定需要 <code>Pin</code>。</p>
+<p>例子，你将整个结构都放到 heap 上，用户 move 只是 move 了 pointer，并不会破坏任何东西(doesn’t break anything)。</p>
+<hr>
+<p>下面是我(nuclearwwc)和alice 关于Pin的对话</p>
+<blockquote>
+<p>nuclearwwc — Today at 11:00 PM</p>
+<p>Hi, Alice!  some streams contain unsafe code that would be incorrect if the stream is moved. So I have a question about this. If  a developer can write code to avoid move very carefully. Does that mean we don’t need the Pin? From my understand, as a safety language, Rust should <strong>explicit</strong> to restrict developer’s code of conduct instead of rely on them intuition. That’t why we still need Pin even though in unsafe scope. right?</p>
+<p>Alice Ryhl — Today at 11:01 PM</p>
+<p>Sure. The Pin type is only necessary if you can’t trust the user to not move it.<br>
+And generally when you write unsafe code and expose it in a library, then the library is generally considered incorrect if there is a way to use that library to invoke undefined &gt; behavior without having the user of the library use unsafe code.<br>
+Being robust against any type of non-unsafe code requires compile-time checks such as Pin<br>
+There are some cases where you don’t need Pin to correctly write a self-referential struct. This can happen if the self-referential part is on the heap, since then the user moving the &gt; struct doesn’t break anything.</p>
+</blockquote>
+<p><a target="_blank" rel="noopener" href="https://discord.com/channels/500028886025895936/500336333500448798/847489538414608444">https://discord.com/channels/500028886025895936/500336333500448798/847489538414608444</a></p>
+<h2 id="Pin用于防止变量被误-move">Pin用于防止变量被误 move</h2>
+<p>其中之一应用场景是解决async中 Future 自身被move，导致executor唤醒失败的问题。</p>
+<p>本小结来自以下文章</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://fasterthanli.me/articles/pin-and-suffering">https://fasterthanli.me/articles/pin-and-suffering</a></p>
+</blockquote>
+<p>最常见的Pin方式是 <code>Box::pin(x)</code> 或者 <code>Pin::new(x)</code>，但后者要求 <code>x: Unpin</code></p>
+<p>对于一个结构体，当每个成员都是 <code>Unpin</code> 时，整个 <code>struct</code> 就是 <code>Unpin</code></p>
+<p>rust中默认类型都是Unpin的，也即，即使被Pin住，可以move</p>
+<p>当需要开发自引用结构时，可以将 struct 某个自引用字段用Pin包裹，这样struct就是 !Unpin，想要Pin住这种结构常规用 <code>Pin::new(x)</code>不行了。必须 Box::pin(x);</p>
+<p>典型的自引用结构是 linked_list</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/tokio-rs/tokio/blob/6b9bdd5ca25bd3f30589506de911db73f7dbf8b4/tokio/src/time/driver/entry.rs#L299">https://github.com/tokio-rs/tokio/blob/6b9bdd5ca25bd3f30589506de911db73f7dbf8b4/tokio/src/time/driver/entry.rs#L299</a></p>
+<p>TimerEntry -&gt; TimerShared -&gt; TimerSharedPadded#pointers -&gt; LinkedList -&gt; TimerShared</p>
+<p>由于TimerShared结构间接自引用，所以整个链条都需要通过 PhantomPined 来 !Unpin</p>
+<hr>
+<h2 id="Unpin">Unpin</h2>
+<p>Unpin是指 <strong>即使 struct 被Pin住，struct 也可以被移动</strong>，并不是指不能被移动！</p>
+<p>Types that can be safely moved <strong>after</strong> being pinned.</p>
+<p><a target="_blank" rel="noopener" href="https://doc.rust-lang.org/std/marker/trait.Unpin.html">https://doc.rust-lang.org/std/marker/trait.Unpin.html</a></p>
+<p>x.await要防止上一行存的引用在下一行被move，所以poll future时临时Pin住</p>
+<p>Future是编译器翻译成的状态机，编译器会将await点用到的变量保存到struct，默认赋值这些变量时通过 <code>*Self = xxx</code>，由于Self永远是自身，所以move是安全的（是通过Self相对引用）。</p>
+<p>但如果我们future的代码里获取了绝对地址，并且用在await，编译器会将这地址保存到struct，这时调用poll()被move就会出问题。为了兼容这情况，poll的Self就必须被Pin住。</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="keyword">fn</span> <span class="title function_">pin_example</span>() <span class="punctuation">-&gt;</span> <span class="type">i32</span> &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">array</span> = [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>];</span><br><span class="line">    <span class="comment">// async第一次执行后</span></span><br><span class="line">    <span class="comment">// 获取array里面的绝对地址</span></span><br><span class="line">    <span class="comment">// 这些代码就将 Future 变成了自引用结构</span></span><br><span class="line">    <span class="comment">// Future通过poll时禁止move来避免move后引用绝对地址导致的 UB</span></span><br><span class="line">    <span class="keyword">let</span> <span class="variable">element</span> = &amp;array[<span class="number">2</span>];</span><br><span class="line">    <span class="title function_ invoke__">async_write_file</span>(<span class="string">&quot;foo.txt&quot;</span>, element.<span class="title function_ invoke__">to_string</span>()).<span class="keyword">await</span>;</span><br><span class="line">    *element</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>也为了兼容这情况，Future结构是 !Unpin</p>
+<p><a target="_blank" rel="noopener" href="https://os.phil-opp.com/async-await/#pinning">https://os.phil-opp.com/async-await/#pinning</a></p>
+<p>Future在第一次poll之前 move 是没问题的，因为async函数里的代码被封装进 Future#poll 里，只要还从未调用过这函数，poll里可能存在的生成自引用的代码就不会被执行，那这时移动就没问题</p>
+<p><strong>It is worth noting that moving futures before the first poll call is fine</strong>. This is a result of the fact that <strong>futures are lazy and do nothing until they’re polled for the first time</strong>. The start state of the generated state machines therefore only contains the function arguments, but no internal references</p>
+<hr>
+<p>这两行 tokio::pin! 如果注释掉会出问题<br>
+<a target="_blank" rel="noopener" href="https://github.com/willdeeper/shadowsocks-rust/blob/6ff4f5b04b8e22d36cd54477cfcadf8cb403de21/bin/ssserver.rs#L308">https://github.com/willdeeper/shadowsocks-rust/blob/6ff4f5b04b8e22d36cd54477cfcadf8cb403de21/bin/ssserver.rs#L308</a></p>
+<p>究其原因，是由于 select 要求 Unpin，而 server 是 Future，对Future本身是 !Unpin（注意，!Unpin是编译器不会为其实现Unpin），由于server和abort_signal会被状态机放到 struct 保存状态，所以 tokio::pin 只是简单检查了是 ownership，就Pin::new_unchecked获取Pin</p>
+<p>关于状态机和 !Unpin，可以看我写的 <code>async是如何使用状态机实现的</code>（本地文档库 计算机理论/），搜索!Unpin，会有详细介绍。</p>
+<h2 id="如果不Pin住实现Future的struct会有可能发生Panic">如果不Pin住实现Future的struct会有可能发生Panic</h2>
+<blockquote>
+<p>左侧顶部三个点的按钮可以开启RUST_BACKTRACE 看到栈回溯</p>
+</blockquote>
+<p><a target="_blank" rel="noopener" href="https://play.rust-lang.org/?version=stable&amp;mode=debug&amp;edition=2018&amp;gist=8fde70c2583dbcb2a4cf3d929a638b8b">https://play.rust-lang.org/?version=stable&amp;mode=debug&amp;edition=2018&amp;gist=8fde70c2583dbcb2a4cf3d929a638b8b</a></p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> futures::Future;</span><br><span class="line"><span class="keyword">use</span> std::&#123;</span><br><span class="line">    mem::swap,</span><br><span class="line">    pin::Pin,</span><br><span class="line">    task::Poll,</span><br><span class="line">    time::Duration</span><br><span class="line">&#125;;</span><br><span class="line"><span class="keyword">use</span> tokio::&#123;</span><br><span class="line">    macros::support::poll_fn,</span><br><span class="line">    time::sleep</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="meta">#[tokio::main]</span></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">fn</span> <span class="title function_">main</span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">sleep1</span> = <span class="title function_ invoke__">sleep</span>(Duration::<span class="title function_ invoke__">from_secs</span>(<span class="number">1</span>));</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">sleep2</span> = <span class="title function_ invoke__">sleep</span>(Duration::<span class="title function_ invoke__">from_secs</span>(<span class="number">1</span>));</span><br><span class="line"></span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">sleep1</span> = <span class="keyword">unsafe</span> &#123; Pin::<span class="title function_ invoke__">new_unchecked</span>(&amp;<span class="keyword">mut</span> sleep1)&#125;;</span><br><span class="line">        <span class="title function_ invoke__">poll_fn</span>(|cx| &#123;</span><br><span class="line">            <span class="keyword">let</span> <span class="variable">_</span> = sleep1.<span class="title function_ invoke__">as_mut</span>().<span class="title function_ invoke__">poll</span>(cx);</span><br><span class="line">            Poll::<span class="title function_ invoke__">Ready</span>(())</span><br><span class="line">        &#125;).<span class="keyword">await</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="title function_ invoke__">swap</span>(&amp;<span class="keyword">mut</span> sleep1, &amp;<span class="keyword">mut</span> sleep2);</span><br><span class="line">    sleep1.<span class="keyword">await</span>;</span><br><span class="line">    sleep2.<span class="keyword">await</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>上面代码会panic，原因就是没有真正Pin住，被swap出去，导致tokio唤醒了错误的sleep future</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br></pre></td><td class="code"><pre><span class="line">$ RUST_BACKTRACE=1 cargo run --quiet</span><br><span class="line">thread &#x27;tokio-runtime-worker&#x27; panicked at &#x27;assertion failed: cur_state &lt; STATE_MIN_VALUE&#x27;, /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/entry.rs:174:13</span><br><span class="line">stack backtrace:</span><br><span class="line">   0: rust_begin_unwind</span><br><span class="line">             at /rustc/cb75ad5db02783e8b0222fee363c5f63f7e2cf5b/library/std/src/panicking.rs:493:5</span><br><span class="line">   1: core::panicking::panic_fmt</span><br><span class="line">             at /rustc/cb75ad5db02783e8b0222fee363c5f63f7e2cf5b/library/core/src/panicking.rs:92:14</span><br><span class="line">   2: core::panicking::panic</span><br><span class="line">             at /rustc/cb75ad5db02783e8b0222fee363c5f63f7e2cf5b/library/core/src/panicking.rs:50:5</span><br><span class="line">   3: tokio::time::driver::entry::StateCell::mark_pending</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/entry.rs:174:13</span><br><span class="line">   4: tokio::time::driver::entry::TimerHandle::mark_pending</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/entry.rs:591:15</span><br><span class="line">   5: tokio::time::driver::wheel::Wheel::process_expiration</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/wheel/mod.rs:251:28</span><br><span class="line">   6: tokio::time::driver::wheel::Wheel::poll</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/wheel/mod.rs:163:21</span><br><span class="line">   7: tokio::time::driver::&lt;impl tokio::time::driver::handle::Handle&gt;::process_at_time</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/mod.rs:269:33</span><br><span class="line">   8: tokio::time::driver::&lt;impl tokio::time::driver::handle::Handle&gt;::process</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/mod.rs:258:9</span><br><span class="line">   9: tokio::time::driver::Driver&lt;P&gt;::park_internal</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/mod.rs:247:9</span><br><span class="line">  10: &lt;tokio::time::driver::Driver&lt;P&gt; as tokio::park::Park&gt;::park</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/time/driver/mod.rs:398:9</span><br><span class="line">  11: &lt;tokio::park::either::Either&lt;A,B&gt; as tokio::park::Park&gt;::park</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/park/either.rs:30:29</span><br><span class="line">  12: &lt;tokio::runtime::driver::Driver as tokio::park::Park&gt;::park</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/driver.rs:198:9</span><br><span class="line">  13: tokio::runtime::park::Inner::park_driver</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/park.rs:205:9</span><br><span class="line">  14: tokio::runtime::park::Inner::park</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/park.rs:137:13</span><br><span class="line">  15: &lt;tokio::runtime::park::Parker as tokio::park::Park&gt;::park</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/park.rs:93:9</span><br><span class="line">  16: tokio::runtime::thread_pool::worker::Context::park_timeout</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/thread_pool/worker.rs:422:13</span><br><span class="line">  17: tokio::runtime::thread_pool::worker::Context::park</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/thread_pool/worker.rs:398:20</span><br><span class="line">  18: tokio::runtime::thread_pool::worker::Context::run</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/thread_pool/worker.rs:328:24</span><br><span class="line">  19: tokio::runtime::thread_pool::worker::run::&#123;&#123;closure&#125;&#125;</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/thread_pool/worker.rs:303:17</span><br><span class="line">  20: tokio::macros::scoped_tls::ScopedKey&lt;T&gt;::set</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/macros/scoped_tls.rs:61:9</span><br><span class="line">  21: tokio::runtime::thread_pool::worker::run</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/thread_pool/worker.rs:300:5</span><br><span class="line">  22: tokio::runtime::thread_pool::worker::Launch::launch::&#123;&#123;closure&#125;&#125;</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/thread_pool/worker.rs:279:45</span><br><span class="line">  23: &lt;tokio::runtime::blocking::task::BlockingTask&lt;T&gt; as core::future::future::Future&gt;::poll</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/blocking/task.rs:42:21</span><br><span class="line">  24: tokio::runtime::task::core::CoreStage&lt;T&gt;::poll::&#123;&#123;closure&#125;&#125;</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/core.rs:235:17</span><br><span class="line">  25: tokio::loom::std::unsafe_cell::UnsafeCell&lt;T&gt;::with_mut</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/loom/std/unsafe_cell.rs:14:9</span><br><span class="line">  26: tokio::runtime::task::core::CoreStage&lt;T&gt;::poll</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/core.rs:225:13</span><br><span class="line">  27: tokio::runtime::task::harness::poll_future::&#123;&#123;closure&#125;&#125;</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/harness.rs:422:23</span><br><span class="line">  28: &lt;std::panic::AssertUnwindSafe&lt;F&gt; as core::ops::function::FnOnce&lt;()&gt;&gt;::call_once</span><br><span class="line">             at /home/amos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:322:9</span><br><span class="line">  29: std::panicking::try::do_call</span><br><span class="line">             at /home/amos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:379:40</span><br><span class="line">  30: __rust_try</span><br><span class="line">  31: std::panicking::try</span><br><span class="line">             at /home/amos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:343:19</span><br><span class="line">  32: std::panic::catch_unwind</span><br><span class="line">             at /home/amos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:396:14</span><br><span class="line">  33: tokio::runtime::task::harness::poll_future</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/harness.rs:409:19</span><br><span class="line">  34: tokio::runtime::task::harness::Harness&lt;T,S&gt;::poll_inner</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/harness.rs:89:9</span><br><span class="line">  35: tokio::runtime::task::harness::Harness&lt;T,S&gt;::poll</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/harness.rs:59:15</span><br><span class="line">  36: tokio::runtime::task::raw::poll</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/raw.rs:104:5</span><br><span class="line">  37: tokio::runtime::task::raw::RawTask::poll</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/raw.rs:66:18</span><br><span class="line">  38: tokio::runtime::task::Notified&lt;S&gt;::run</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/task/mod.rs:171:9</span><br><span class="line">  39: tokio::runtime::blocking::pool::Inner::run</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/blocking/pool.rs:278:17</span><br><span class="line">  40: tokio::runtime::blocking::pool::Spawner::spawn_thread::&#123;&#123;closure&#125;&#125;</span><br><span class="line">             at /home/amos/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.4.0/src/runtime/blocking/pool.rs:258:17</span><br><span class="line">note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>Well, precisely because that’s a <strong>heap allocation</strong>! If you’re holding a Sleep on the stack, and you pass it around to another function, or store it in a struct, or whatever, it actually moves — its address changes.</p>
+<p>But if you’re holding a Box<Sleep>, well, then you’re only holding a pointer to a Sleep that lives somewhere in heap-allocated memory. That somewhere will never change, ie. <strong>the Sleep itself will never move</strong>. The pointer to Sleep can be passed around, and everything is fine.</p>
+</blockquote>
+<hr>
+<h2 id="Tokio-spawn要求Future必须是Pin">Tokio#spawn要求Future必须是Pin</h2>
+<p><a target="_blank" rel="noopener" href="https://github.com/tokio-rs/tokio/blob/6b9bdd5ca25bd3f30589506de911db73f7dbf8b4/tokio/src/runtime/task/core.rs#L221">https://github.com/tokio-rs/tokio/blob/6b9bdd5ca25bd3f30589506de911db73f7dbf8b4/tokio/src/runtime/task/core.rs#L221</a></p>
+<p>整个Task都被分配到heap，所以不会move，需要poll future时通过下面</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="comment">// Safety: The caller ensures the future is pinned.</span></span><br><span class="line"><span class="keyword">let</span> <span class="variable">future</span> = <span class="keyword">unsafe</span> &#123; Pin::<span class="title function_ invoke__">new_unchecked</span>(future) &#125;;</span><br></pre></td></tr></table></figure>
+<p>可获得Pin</p>
+<h2 id="Pin-on-stack">Pin on stack</h2>
+<p>为什么要记录下这个呢？是因为看 shadowsocks-rust时使用的 pin! 里面竟然是 <code>new_unchecked()</code></p>
+<p><a target="_blank" rel="noopener" href="https://github.com/shadowsocks/shadowsocks-rust/blob/49b7004d7565de98a24b49657443b19c03365a8f/bin/ssserver.rs#L304">https://github.com/shadowsocks/shadowsocks-rust/blob/49b7004d7565de98a24b49657443b19c03365a8f/bin/ssserver.rs#L304</a></p>
+<p>所以就好奇，为什么可以直接用 <code>new_unchecked</code> 函数。</p>
+<p>tokio::pin!用的 new_unchecked 并不在乎到底Pin的是在stack还是heap，如果指针指向stack，就是pin在stack，指向heap，就是pin在heap。</p>
+<p>tokio::pin!有意思的点是，<code>let mut $x = $x</code> 先shadow掉原来的 $x，确保 $x 不会被别的变量持有。</p>
+<p>最后Pin住。Pin 根本就不在乎是 stack 还是 heap，Pin只是代表不能被 move，</p>
+<blockquote>
+<p>pinning makes sense anywhere<br>
+pinning just means it doesn’t move</p>
+</blockquote>
+<p>相当于，你给我 T，最后我返还给你 <code>Pin&lt;&amp;mut T&gt;</code>，由于 Pin&lt;&amp;mut T&gt; 限制地更严，所以安全。（从宽松到严格往往是容易的）</p>
+<p>tokio::pin好处是，你完全可以 safely 使用 pin。 而不需要你自己的代码写 unsafe</p>
+<p><a target="_blank" rel="noopener" href="https://discord.com/channels/500028886025895936/500336333500448798/846016916957954058">https://discord.com/channels/500028886025895936/500336333500448798/846016916957954058</a></p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[macro_export]</span></span><br><span class="line"><span class="built_in">macro_rules!</span> pin &#123;</span><br><span class="line">    ($($x:ident),*) =&gt; &#123; $(</span><br><span class="line">        <span class="comment">// Move the value to ensure that it is owned</span></span><br><span class="line">        <span class="comment">// 我们是 ownership</span></span><br><span class="line">        <span class="keyword">let</span> <span class="variable">mut</span> $x = $x;</span><br><span class="line">        <span class="comment">// Shadow the original binding so that it can&#x27;t be directly accessed</span></span><br><span class="line">        <span class="comment">// ever again.</span></span><br><span class="line">        <span class="comment">// 原来的 x 被我们 shadow 掉了，x 变成 Pin&lt;T&gt;</span></span><br><span class="line">        <span class="meta">#[allow(unused_mut)]</span></span><br><span class="line">        <span class="keyword">let</span> <span class="variable">mut</span> $x = <span class="keyword">unsafe</span> &#123;</span><br><span class="line">            $crate::macros::support::Pin::<span class="title function_ invoke__">new_unchecked</span>(&amp;<span class="keyword">mut</span> $x)</span><br><span class="line">        &#125;;</span><br><span class="line">    )* &#125;;</span><br><span class="line">    ($(</span><br><span class="line">            <span class="keyword">let</span> $x:ident = $init:expr;</span><br><span class="line">    )*) =&gt; &#123;</span><br><span class="line">        $(</span><br><span class="line">            <span class="keyword">let</span> $x = $init;</span><br><span class="line">            $crate::pin!($x);</span><br><span class="line">        )*</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="Pin-projection-和-structural-Pinning">Pin projection 和 structural Pinning</h2>
+<p>大体意思是，对于一个结构体Struct，当Struct被Pin住时，这个Pin的约束对哪个字段起作用？<br>
+如果某个字段被move并不会引起问题，那 <code>Pin&lt;&amp;mut Map&gt;</code> 可以转换为 <code>&amp;mut f</code><br>
+如果某个字段 future 必须被Pinned，那 <code>Pin&lt;&amp;mut Map&gt;</code>就是约束他(future)的，而非其他字段。</p>
+<p>其他字段是否被move，并不会引起unsound。</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">Map</span>&lt;Fut, F&gt; &#123;</span><br><span class="line">    future: Fut,</span><br><span class="line">    f: <span class="type">Option</span>&lt;F&gt;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 默认每个字段都必须是Unpin，Map才会是Unpin</span></span><br><span class="line"><span class="comment">// 我们主动为Map实现Unpin</span></span><br><span class="line"><span class="comment">// 当 Fut 是Unpin时，整个结构就是Unpin</span></span><br><span class="line"><span class="comment">// 为什么不在乎f Unpin与否？</span></span><br><span class="line"><span class="comment">// 因为f是否Unpin，和是否被move，并不会导致future#poll出问题，可以忽略f</span></span><br><span class="line"><span class="comment">// </span></span><br><span class="line"><span class="keyword">impl</span> &lt;Fut: Unpin, F&gt; Unpin <span class="keyword">for</span> <span class="title class_">Map</span>&lt;Fut, F&gt; &#123;&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span>&lt;Fut, F, T&gt; Future <span class="keyword">for</span> <span class="title class_">Map</span>&lt;Fut, F&gt;</span><br><span class="line"><span class="keyword">where</span>   Fut: Future,</span><br><span class="line">        F: <span class="title function_ invoke__">FnOnce</span>(Fut::Output) <span class="punctuation">-&gt;</span> T</span><br><span class="line">&#123;</span><br><span class="line">    unsafe_pinned!(future: Fut);</span><br><span class="line">    unsafe_unpinned!(f: <span class="type">Option</span>&lt;F&gt;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">type</span> <span class="title class_">Output</span> = T;</span><br><span class="line">    <span class="keyword">fn</span> <span class="title function_">poll</span>(<span class="keyword">mut</span> <span class="keyword">self</span>: Pin&lt;&amp;<span class="keyword">mut</span> <span class="keyword">Self</span>&gt;, cx: &amp;<span class="keyword">mut</span> Context&lt;<span class="symbol">&#x27;_</span>&gt;) <span class="punctuation">-&gt;</span> Poll&lt;T&gt; &#123;</span><br><span class="line">        <span class="keyword">match</span> <span class="keyword">self</span>.<span class="title function_ invoke__">as_mut</span>().<span class="title function_ invoke__">future</span>().<span class="title function_ invoke__">poll</span>(cx) &#123;</span><br><span class="line">            Poll::Pending =&gt; Poll::Pending,</span><br><span class="line">            Poll::<span class="title function_ invoke__">Ready</span>(output) =&gt; &#123;</span><br><span class="line">                <span class="keyword">let</span> <span class="variable">f</span> = <span class="keyword">self</span>.<span class="title function_ invoke__">f</span>().<span class="title function_ invoke__">take</span>().<span class="title function_ invoke__">expect</span>(<span class="string">&quot;take must success&quot;</span>);</span><br><span class="line">                Poll::<span class="title function_ invoke__">Ready</span>(<span class="title function_ invoke__">f</span>(output))</span><br><span class="line">            &#125; </span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>pin_project crate 就是做这个的，通过在字段上标注 <code>#[pin]</code>进行局部Pin，struct是Pin的，有 <code>#[pin]</code>的字段也是Pin的，其他字段是否被move没有问题</p>
+<p>当字段被Pin住，成为 <code>Pin&lt;&amp;mut Field&gt;</code>，就不应该将 Field 移出去。这里要说明的是，移出去不一定错，Pin从设计上说不能move而已。只要将他假设为，虽然被Pin住，但还是可以被move。</p>
+<h2 id="翻译-https-doc-rust-lang-org-nightly-core-pin-index-html-projections-and-structural-pinning">翻译 <a target="_blank" rel="noopener" href="https://doc.rust-lang.org/nightly/core/pin/index.html#projections-and-structural-pinning">https://doc.rust-lang.org/nightly/core/pin/index.html#projections-and-structural-pinning</a></h2>
+<h3 id="Projections-and-Structural-Pinning-映射和结构化Pinning">Projections and Structural Pinning 映射和结构化Pinning</h3>
+<p>名词解释</p>
+<ol>
+<li>projection：映射，投影。提供一个方法将 <code>Pin&lt;&amp;mut Struct&gt;</code> 转换成 <code>Pin&lt;&amp;mut Field&gt;</code></li>
+<li>structural pinning: 结构pinning。如果整个struct是Pin，那每个成员也都是Pin。比如现存在 <code>Pin&lt;&amp;mut Struct&gt;</code>类型，则此刻 Struct 里的每个字段都必须是 <code>Pin&lt;&amp;mut FieldABCDEFG&gt;</code></li>
+</ol>
+<p>当使用pinned结构时，我们如果获取方法参数中类型是 <code>Pin&lt;&amp;mut Struct&gt;</code>的内部结构成员？通常办法是写一个工具函数（叫做 projection），将 <code>Pin&lt;&amp;mut Struct&gt;</code>转换成对内部字段的引用。但这引用应该是 <code>Pin&lt;&amp;mut Field&gt;</code> 还是 <code>&amp;mut Field</code>？实际上当获取Enum，或容器类型(<code>Vec&lt;T&gt;</code>, <code>Box&lt;T&gt;</code>, <code>RefCell&lt;T&gt;</code>)内部字段的引用时，也会有上面的疑问。（这疑问涉及到可变和共享引用两者，我们只是单拎出来可变引用加以说明）。</p>
+<p>实际上是否将某个字段的pinned projection转换为 <code>Pin&lt;&amp;mut Struct&gt;</code>转换成 <code>Pin&lt;&amp;mut Field&gt;</code> 还是 <code>&amp;mut Field</code> 取决于 Struct 结构体的提供者。这种转化是有约束的，最重要的约束时一致性。Struct的每个字段两个取其一，只能被映射成为 pinned reference 或者 &amp;mut Field。如果同时映射为上述两者，那可能是 unsound.</p>
+<p>作为数据结构的作者，你必须决定每个字段是否能从 <code>Pin&lt;&amp;mut Struct&gt;</code>转换为 <code>Pin&lt;&amp;mut Field&gt;</code>。pinning的传递（即从 <code>Pin&lt;&amp;mut Struct&gt;</code>转换为 <code>Pin&lt;&amp;mut Field&gt;</code>）称为结构化(structural)。因为他衍随了原来外层的类型（我自己的理解，<code>Pin&lt;&amp;mut Struct&gt;</code>=&gt; <code>Pin&lt;&amp;mut Field&gt;</code>，只是内层T变化，作为最外层的 <code>Pin&lt;T&gt;</code>不变，也即，始终是Pin的）。在下面的章节，我们分别解释两种选择的考量</p>
+<blockquote>
+<p>哪两者？分别是</p>
+<ol>
+<li><code>Pin&lt;&amp;mut Struct&gt;</code> =&gt; <code>&amp;mut Field</code>，称为 not structural(Pinning is not structural for <code>field</code>)</li>
+<li><code>Pin&lt;&amp;mut Struct&gt;</code> =&gt; <code>Pin&lt;&amp;mut Field&gt;</code>，称为 structural(Pinning is structural for <code>field</code>)</li>
+</ol>
+</blockquote>
+<h4 id="Pinning-is-not-structural-for-field">Pinning is not structural for <code>field</code></h4>
+<p>一个被Pin住的Struct <code>Pin&lt;&amp;mut Struct&gt;</code>，其内部字段竟然不是Pinned，看着很反直觉，但通常这是最简单的选择，如果<code>Pin&lt;&amp;mut Field&gt;</code>从未被创建，那绝对不可能出错！所以，如果你认为某些字段没必要有 <code>结构化pinning约束（structural pinning）</code>，你需要确保的是，你自始至终都不会创建对这些字段的 pinned reference，也即，不会创建 <code>Pin&lt;&amp;mut Field&gt;</code>。</p>
+<p>没有结构化pinning的字段可以通过映射方法，将 <code>Pin&lt;&amp;mut Struct&gt;</code>转换为 <code>&amp;mut Field</code>。</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span> <span class="title class_">Struct</span> &#123;</span><br><span class="line">    <span class="keyword">fn</span> <span class="title function_">pin_get_field</span>(<span class="keyword">self</span>: Pin&lt;&amp;<span class="keyword">mut</span> <span class="keyword">Self</span>&gt;) <span class="punctuation">-&gt;</span> &amp;<span class="keyword">mut</span> Field &#123;</span><br><span class="line">        <span class="comment">// This is okay because `field` is never considered pinned.</span></span><br><span class="line">        <span class="keyword">unsafe</span> &#123; &amp;<span class="keyword">mut</span> <span class="keyword">self</span>.<span class="title function_ invoke__">get_unchecked_mut</span>().field &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>你设置可以 <code>impl Unpin for Struct</code> 即使字段 field 不是 Unpin.</p>
+<blockquote>
+<p>What that type thinks about pinning is not relevant when no Pin&lt;&amp;mut Field&gt; is ever created.<br>
+这句话我不会翻译，但我这么理解：一定要区分开约束是编译期（是编译期，不是编译器，没打错）的施加还是不这样做一定会出错<br>
+Pin只是编译期的约束，是为了防止出错，详细介绍看本文上部分 <code>Pin的作用是防止move，但如果程序员小心处理，那就不会出错。为什么还需要Pin呢？xxxx</code>。</p>
+</blockquote>
+<blockquote>
+<p>解释，由于 field 被Pin与否都不会影响逻辑，所以其他需要被Pin的都实现了Unpin，那整个结构从原则上就是 Unpin，但编译器只会对全部字段都是Unpin的 Struct才会自动实现Unpin，所以这种情况下需要开发者手动声明 Struct 为 Unpin</p>
+</blockquote>
+<h4 id="Pinning-is-structural-for-field">Pinning is structural for <code>field</code></h4>
+<p>另一个选择是决定 pinning对字段是结构化的，这意味着，如果struct被pinned，field也会。</p>
+<p>通过这可以编写映射创建 <code>Pin&lt;&amp;mut Field&gt;</code>，如下所示，field是pinned</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span> <span class="title class_">Struct</span> &#123;</span><br><span class="line">    <span class="keyword">fn</span> <span class="title function_">pin_get_field</span>(<span class="keyword">self</span>: Pin&lt;&amp;<span class="keyword">mut</span> <span class="keyword">Self</span>&gt;) <span class="punctuation">-&gt;</span> Pin&lt;&amp;<span class="keyword">mut</span> Field&gt; &#123;</span><br><span class="line">        <span class="comment">// This is okay because `field` is pinned where `self` is.</span></span><br><span class="line">        <span class="keyword">unsafe</span> &#123; <span class="keyword">self</span>.<span class="title function_ invoke__">map_unchecked_mut</span>(|s| &amp;<span class="keyword">mut</span> s.field) &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然而，为了结构化pinning，需要满足几个条件：</p>
+<ol>
+<li>如果全部结构化field都是Unpin，那struct这容器才会是Unpin。这其实是编译器默认的行为，但Unpin是safe trait，所以编写 struct 的作者需确保不添加 <code>impl &lt;T&gt; Unpin for Struct&lt;T&gt;</code>（值得注意的是，像上面 <code>pin_get_field</code>添加将<code>Pin&lt;&amp;mut Self&gt;</code> 映射为 <code>Pin&lt;&amp;mut Field&gt;</code>需要unsafe代码块，但实现Unpin本身是safe的，如果你通过unsafe完成上述映射，就必须仔细考虑Unpin的添加与否。）</li>
+</ol>
+<blockquote>
+<p>为什么要特别强调Unpin？<br>
+Unpin会逃脱 Pin 的限制，从而获取 <code>&amp;mut Field</code>，将 <code>Pin&lt;&amp;mut Self&gt;</code>转换成 <code>Pin&lt;&amp;mut Field&gt;</code>的过程中蕴含着一层假设，即Self不会被move。但对Struct实现Unpin后会使得Self 成为Unpin，Unpin可以逃离Pin的限制，这很危险（只是危险，不一定会出错，如果你足够牛逼，仔细处理各种边界case也没问题，只不过没有编译器约束你罢了）</p>
+</blockquote>
+<ol start="2">
+<li>
+<p>struct的析构函数不能将结构化pin的字段move出去。这是<a target="_blank" rel="noopener" href="https://doc.rust-lang.org/nightly/core/pin/index.html#drop-implementation">上一节</a>着重陈述的一点： <code>drop</code> 接受 <code>&amp;mut self</code>参数，但 struct和他内部的字段可能刚才被Pin住了。你必须保证 Drop 实现中不会move内部字段。尤其上面介绍的，这意味着你的struct一定不能是<code>#[repr(packed)]</code>。浏览<a target="_blank" rel="noopener" href="https://doc.rust-lang.org/nightly/core/pin/index.html#drop-implementation">上一节</a> 学习如何编写 drop，让编译器帮助你别意外违反 pinning.</p>
+</li>
+<li>
+<p>你必须确保遵守 <a target="_blank" rel="noopener" href="https://doc.rust-lang.org/nightly/core/pin/index.html#drop-guarantee">drop 保证*（drop guarantee）</a>。一旦你struct被pinned，在没调用struct析构函数之前，struct的那片内存必须不被覆盖，不会释放（否则就是UB，这比较好理解）。这可能会很难办，正如 <code>VecDeque&lt;T&gt;</code>遇到的那样： 如果容器内的元素的析构函数panic，那 <code>VecDeque&lt;T&gt;</code> 的析构函数调用就会失败。这违反了 <code>drop</code> 保证（drop guarantee），因为这会导致容器内元素明明析构函数未被调用，但他们的内存却被释放（deallocated）。所幸<code>VecDeque&lt;T&gt;</code>并没有 pinning 映射（projections），所以上述情况不会导致 <code>unsoundness</code></p>
+</li>
+<li>
+<p>你一定不能在struct被pinned期间，提供任何可能导致 structural field 被move出去的方法。例如，如果 struct 包含 <code>Option&lt;T&gt;</code>，恰好有个take方法，其函数形参为 <code>fn(Pin&lt;&amp;mut Self&gt;) -&gt; Pin&lt;&amp;mut T&gt;</code>，这 take 方法可被用来将 T 从 pinned 的 <code>Struct&lt;T&gt;</code> move出去</p>
+</li>
+</ol>
+<p>这意味着 pinning 不能用于 结构化pin住 持有数据的这个字段</p>
+<blockquote>
+<p>上面这句话有些生硬。换成英文感受下</p>
+<p>which means pinning cannot be structural for the field holding this data.<br>
+意思是，Struct 的字段明明被 pinning 了，结果你提供方法将 <code>Pin&lt;&amp;mut Struct&lt;T&gt;&gt;</code> 转换为 <code>Option&lt;T&gt;</code>，使得 T 逃脱了 Pin 的约束，这显然是<strong>错误</strong>的</p>
+</blockquote>
+<p>再举一个更复杂的，将数据从已经被 pinned 的结构 move 出去的例子。想象下如果 <code>RefCell&lt;T&gt;</code>有个 <code>fn get_pin_mut(self: Pin&lt;&amp;mut Self&gt;) -&gt; Pin&lt;&amp;mut T&gt;</code>方法，那我们可以这么玩</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">fn</span> <span class="title function_">exploit_ref_cell</span>&lt;T&gt;(rc: Pin&lt;&amp;<span class="keyword">mut</span> RefCell&lt;T&gt;&gt;) &#123;</span><br><span class="line">    &#123; <span class="keyword">let</span> <span class="variable">p</span> = rc.<span class="title function_ invoke__">as_mut</span>().<span class="title function_ invoke__">get_pin_mut</span>(); &#125; <span class="comment">// 将 Pin&lt;&amp;mut RefCell&lt;T&gt;&gt; 转换为 Pin&lt;&amp;mut T&gt;</span></span><br><span class="line">    <span class="keyword">let</span> <span class="variable">rc_shr</span>: &amp;RefCell&lt;T&gt; = rc.<span class="title function_ invoke__">into_ref</span>().<span class="title function_ invoke__">get_ref</span>(); <span class="comment">// Pin&lt;&amp;mut T&gt; =&gt; &amp;RefCell&lt;T&gt;</span></span><br><span class="line">    <span class="keyword">let</span> <span class="variable">b</span> = rc_shr.<span class="title function_ invoke__">borrow_mut</span>(); <span class="comment">// RefCell本身有 borrow_mut() 方法，可以通过 &amp;self 获得 &amp;mut self。</span></span><br><span class="line">    <span class="comment">// https://doc.rust-lang.org/std/cell/struct.RefCell.html#method.borrow_mut</span></span><br><span class="line">    <span class="comment">// RefCell借助UnsafeCell，将 &amp;self 转为 &amp;mut self</span></span><br><span class="line">    <span class="keyword">let</span> <span class="variable">content</span> = &amp;<span class="keyword">mut</span> *b; <span class="comment">// reborrow下，最终获取 &amp;mut T</span></span><br><span class="line">    <span class="comment">// 通过上述 &quot;努力&quot; ，将 Pin&lt;&amp;mut Ref&lt;T&gt;&gt; 一步步转化成 &amp;mut T，逃脱了Pin的限制</span></span><br><span class="line">    <span class="comment">// 获得 &amp;mut T后，就能将 T 从 Pin&lt;&amp;mut RefCell&lt;T&gt;&gt; move出去</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><strong>翻译完上面之后，总结一句话</strong></p>
+<blockquote>
+<p>Pin作为rust zero cost的其中一例，只是编译期的约束。而如果你足够牛逼，仔细处理各种边界case，哪怕Pin住，通过unsafe随便玩，随便move都没问题。但为了绝对正确性，我们认为在 <code>Pin&lt;T&gt;</code> 期间利用各种手段将 T move 出去，是<strong>绝对错误</strong>的</p>
+</blockquote>
+<hr>
+<p>重点看下面这连接，最后两个作为补充即可</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/56058494/when-is-it-safe-to-move-a-member-value-out-of-a-pinned-future">https://stackoverflow.com/questions/56058494/when-is-it-safe-to-move-a-member-value-out-of-a-pinned-future</a></p>
+</blockquote>
+<p><a target="_blank" rel="noopener" href="https://github.com/rust-lang/futures-rs/blob/0.3.0-alpha.15/futures-util/src/future/map.rs#L36-L45">https://github.com/rust-lang/futures-rs/blob/0.3.0-alpha.15/futures-util/src/future/map.rs#L36-L45</a></p>
+<p><a target="_blank" rel="noopener" href="https://doc.rust-lang.org/nightly/core/pin/index.html#projections-and-structural-pinning">https://doc.rust-lang.org/nightly/core/pin/index.html#projections-and-structural-pinning</a></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Rust/" rel="tag"># Rust</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/11/01/53/" rel="prev" title="Rust浅尝">
+      <i class="fa fa-chevron-left"></i> Rust浅尝
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/06/18/55/" rel="next" title="Async状态机实现">
+      Async状态机实现 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%88%91%E5%AF%B9Pin-%E7%9A%84%E6%95%B4%E4%BD%93%E7%90%86%E8%A7%A3-%E4%B8%BA%E4%BA%86%E8%A7%A3%E5%86%B3unsafe%E5%9C%BA%E6%99%AF%E4%B8%8Bmove%E9%97%AE%E9%A2%98"><span class="nav-number">1.</span> <span class="nav-text">我对Pin 的整体理解 - 为了解决unsafe场景下move问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8F%90%E5%87%BA%E7%9A%84%E5%BF%85%E8%A6%81%E6%80%A7-%E4%B8%8D%E4%BE%9D%E8%B5%96Pin%E8%83%BD%E5%90%A6%E5%81%9A%E5%88%B0%E5%B8%8C%E6%9C%9B%E7%9A%84-%E4%B8%8D%E8%A2%ABmove"><span class="nav-number">1.1.</span> <span class="nav-text">提出的必要性 - 不依赖Pin能否做到希望的 不被move ?</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Pin%E7%94%A8%E4%BA%8E%E9%98%B2%E6%AD%A2%E5%8F%98%E9%87%8F%E8%A2%AB%E8%AF%AF-move"><span class="nav-number">2.</span> <span class="nav-text">Pin用于防止变量被误 move</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Unpin"><span class="nav-number">3.</span> <span class="nav-text">Unpin</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A6%82%E6%9E%9C%E4%B8%8DPin%E4%BD%8F%E5%AE%9E%E7%8E%B0Future%E7%9A%84struct%E4%BC%9A%E6%9C%89%E5%8F%AF%E8%83%BD%E5%8F%91%E7%94%9FPanic"><span class="nav-number">4.</span> <span class="nav-text">如果不Pin住实现Future的struct会有可能发生Panic</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Tokio-spawn%E8%A6%81%E6%B1%82Future%E5%BF%85%E9%A1%BB%E6%98%AFPin"><span class="nav-number">5.</span> <span class="nav-text">Tokio#spawn要求Future必须是Pin</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Pin-on-stack"><span class="nav-number">6.</span> <span class="nav-text">Pin on stack</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Pin-projection-%E5%92%8C-structural-Pinning"><span class="nav-number">7.</span> <span class="nav-text">Pin projection 和 structural Pinning</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BF%BB%E8%AF%91-https-doc-rust-lang-org-nightly-core-pin-index-html-projections-and-structural-pinning"><span class="nav-number">8.</span> <span class="nav-text">翻译 https:&#x2F;&#x2F;doc.rust-lang.org&#x2F;nightly&#x2F;core&#x2F;pin&#x2F;index.html#projections-and-structural-pinning</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Projections-and-Structural-Pinning-%E6%98%A0%E5%B0%84%E5%92%8C%E7%BB%93%E6%9E%84%E5%8C%96Pinning"><span class="nav-number">8.1.</span> <span class="nav-text">Projections and Structural Pinning 映射和结构化Pinning</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Pinning-is-not-structural-for-field"><span class="nav-number">8.1.1.</span> <span class="nav-text">Pinning is not structural for field</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Pinning-is-structural-for-field"><span class="nav-number">8.1.2.</span> <span class="nav-text">Pinning is structural for field</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

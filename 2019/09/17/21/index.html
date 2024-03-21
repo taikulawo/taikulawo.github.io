@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="为什么人们都说 Hash 表查找的时间复杂度是 O(1)? 下面是我在 Stackoverflow 上看到的回答 https:&#x2F;&#x2F;stackoverflow.com&#x2F;questions&#x2F;730620&#x2F;how-does-a-hash-table-work 我翻译了一部分，又对一些缺少的概念添加了解释 哈希表经常通过数组与链表实现。我们设想一张存储姓名的表，在经过几次的插入之后，他可能会在内存中有如下">
+<meta property="og:type" content="article">
+<meta property="og:title" content="浅入哈希表">
+<meta property="og:url" content="http://www.chaochaogege.com/2019/09/17/21/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="为什么人们都说 Hash 表查找的时间复杂度是 O(1)? 下面是我在 Stackoverflow 上看到的回答 https:&#x2F;&#x2F;stackoverflow.com&#x2F;questions&#x2F;730620&#x2F;how-does-a-hash-table-work 我翻译了一部分，又对一些缺少的概念添加了解释 哈希表经常通过数组与链表实现。我们设想一张存储姓名的表，在经过几次的插入之后，他可能会在内存中有如下">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2019-09-17T00:00:00.000Z">
+<meta property="article:modified_time" content="2019-09-19T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="基础">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2019/09/17/21/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>浅入哈希表 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2019/09/17/21/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          浅入哈希表
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2019-09-17 00:00:00" itemprop="dateCreated datePublished" datetime="2019-09-17T00:00:00+00:00">2019-09-17</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2019-09-19 00:00:00" itemprop="dateModified" datetime="2019-09-19T00:00:00+00:00">2019-09-19</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="为什么人们都说-Hash-表查找的时间复杂度是-O-1">为什么人们都说 Hash 表查找的时间复杂度是 O(1)?</h3>
+<p>下面是我在 Stackoverflow 上看到的回答</p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/730620/how-does-a-hash-table-work">https://stackoverflow.com/questions/730620/how-does-a-hash-table-work</a></p>
+<p>我翻译了一部分，又对一些缺少的概念添加了解释</p>
+<p>哈希表经常通过数组与链表实现。我们设想一张存储姓名的表，在经过几次的插入之后，他可能会在内存中有如下形式。</p>
+<p><code>()</code> 中代表的是姓名的 哈希值</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">bucket#  bucket content / linked list</span><br><span class="line"></span><br><span class="line">[0]      --&gt; &quot;sue&quot;(780) --&gt; null</span><br><span class="line">[1]      null</span><br><span class="line">[2]      --&gt; &quot;fred&quot;(42) --&gt; &quot;bill&quot;(9282) --&gt; &quot;jane&quot;(42) --&gt; null</span><br><span class="line">[3]      --&gt; &quot;mary&quot;(73) --&gt; null</span><br><span class="line">[4]      null</span><br><span class="line">[5]      --&gt; &quot;masayuki&quot;(75) --&gt; &quot;sarwar&quot;(105) --&gt; null</span><br><span class="line">[6]      --&gt; &quot;margaret&quot;(2626) --&gt; null</span><br><span class="line">[7]      null</span><br><span class="line">[8]      --&gt; &quot;bob&quot;(308) --&gt; null</span><br><span class="line">[9]      null</span><br></pre></td></tr></table></figure>
+<p>关键的几点：</p>
+<ol>
+<li>每一个数组元素都是一个<code>桶(bucket)</code>，刚开始是空的，引用着链表，其中包含着值<code>（在这个例子中是名字）</code></li>
+<li>每个值 (比如 <code>fred</code> ，哈希值是 42)都连接着 <code>[hash % 桶的数量]</code> 这个桶，比如 <code>42 % 10 == [2]</code>， <code>%</code>是 <code>取余操作符</code>，余数是桶的编号</li>
+<li>在同一个桶中的多个值的值可能冲突<code>（相同）</code>，这往往是由于他们取余之后的 <code>hash</code> 值相同导致的<code>(比如 42 % 10 == 2, 9282 % 10 == 2)</code>。
+<ul>
+<li>大多数的 哈希表 都会通过比较早己经插入桶中的完整的值来处理冲突<code>（虽然这会降低性能，却保证了没有逻辑上的错误）</code></li>
+</ul>
+</li>
+</ol>
+<h4 id="链表的长度与负载系数-load-factor-相关，与值的数量无关">链表的长度与负载系数(load factor)相关，与值的数量无关</h4>
+<p>当存储的元素增多时，表会自动扩大（创建一个更大的数组，存放更多的桶，删除旧的数组），以此来保证值的数量与桶的数量比例在 0.5 到 1.0 之前。</p>
+<p>对于负载系数为1的加密级哈希函数， <code>1/e (~36.8%)</code> 的桶是空的 另外 <code>1/e (~36.8%)</code>的桶有一个元素， <code>1/(2e)</code> 或者 <code>~18.4%</code> 的桶有连个元素， <code>6.1%</code> 的桶有三个元素，<code>1.5%</code> 的桶有四个元素 <code>3%</code> 的桶有五个元素，不管元素数量多少，链表的平均长度大约是 <code>1.58</code>（100 个元素对应着 100 个桶，或者一亿个元素对应着一亿个桶），这也就是为什么我们 <code>查找/插入/删除</code> 是 <code>O(1)</code> 常数的时间复杂度</p>
+<h4 id="什么是-负载系数-load-factor-？">什么是 负载系数(load factor)？</h4>
+<p>哈希表中的元素超过某一个限度时会自动扩张，扩张之后的数组更大，同时每个链表的长度也会更短，那么我们的 <code>查找/插入/删除</code> 操作就越接近与常数</p>
+<p>更大的负载系数<code>(0 &lt; load factor &lt;= 1)</code>带来空间占用的降低，但却提高了 <code>查找/插入/删除</code> 的时间花费</p>
+<p><code>Java</code> 的 <code>HashMap</code> 的默认负载系数是 <code>0.75</code>，作为空间和时间的折中。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%9F%BA%E7%A1%80/" rel="tag"># 基础</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2019/09/16/15/" rel="prev" title="go的线程何时会阻塞">
+      <i class="fa fa-chevron-left"></i> go的线程何时会阻塞
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2019/09/17/20/" rel="next" title="Go并发打印数字">
+      Go并发打印数字 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BA%BA%E4%BB%AC%E9%83%BD%E8%AF%B4-Hash-%E8%A1%A8%E6%9F%A5%E6%89%BE%E7%9A%84%E6%97%B6%E9%97%B4%E5%A4%8D%E6%9D%82%E5%BA%A6%E6%98%AF-O-1"><span class="nav-number">1.</span> <span class="nav-text">为什么人们都说 Hash 表查找的时间复杂度是 O(1)?</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%93%BE%E8%A1%A8%E7%9A%84%E9%95%BF%E5%BA%A6%E4%B8%8E%E8%B4%9F%E8%BD%BD%E7%B3%BB%E6%95%B0-load-factor-%E7%9B%B8%E5%85%B3%EF%BC%8C%E4%B8%8E%E5%80%BC%E7%9A%84%E6%95%B0%E9%87%8F%E6%97%A0%E5%85%B3"><span class="nav-number">1.1.</span> <span class="nav-text">链表的长度与负载系数(load factor)相关，与值的数量无关</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF-%E8%B4%9F%E8%BD%BD%E7%B3%BB%E6%95%B0-load-factor-%EF%BC%9F"><span class="nav-number">1.2.</span> <span class="nav-text">什么是 负载系数(load factor)？</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

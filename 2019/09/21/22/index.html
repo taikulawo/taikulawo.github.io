@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="本文翻译自 https:&#x2F;&#x2F;docs.docker.com&#x2F;config&#x2F;containers&#x2F;multi-service_container&#x2F; 我们都知道，所谓的容器就是一个被隔离到不同环境的进程而已，那我们如果在一个容器内运行多个进程呢？ 一个容器的主进程是 ENTRYPOINT 或者在 Dockerfile 最后的 CMD ， 容器的主进程负责管理它启动的全部进程。 在某些条件下，主进程由于">
+<meta property="og:type" content="article">
+<meta property="og:title" content="如何使一个容器运行多个进程？">
+<meta property="og:url" content="http://www.chaochaogege.com/2019/09/21/22/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="本文翻译自 https:&#x2F;&#x2F;docs.docker.com&#x2F;config&#x2F;containers&#x2F;multi-service_container&#x2F; 我们都知道，所谓的容器就是一个被隔离到不同环境的进程而已，那我们如果在一个容器内运行多个进程呢？ 一个容器的主进程是 ENTRYPOINT 或者在 Dockerfile 最后的 CMD ， 容器的主进程负责管理它启动的全部进程。 在某些条件下，主进程由于">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2019-09-21T00:00:00.000Z">
+<meta property="article:modified_time" content="2019-10-31T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="云计算">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2019/09/21/22/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>如何使一个容器运行多个进程？ | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2019/09/21/22/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          如何使一个容器运行多个进程？
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2019-09-21 00:00:00" itemprop="dateCreated datePublished" datetime="2019-09-21T00:00:00+00:00">2019-09-21</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2019-10-31 00:00:00" itemprop="dateModified" datetime="2019-10-31T00:00:00+00:00">2019-10-31</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文翻译自 <code>https://docs.docker.com/config/containers/multi-service_container/</code></p>
+<p>我们都知道，所谓的容器就是一个被隔离到不同环境的进程而已，那我们如果在一个容器内运行多个进程呢？</p>
+<p>一个容器的主进程是 <code>ENTRYPOINT</code> 或者在 <code>Dockerfile</code> 最后的 <code>CMD</code> ，</p>
+<p>容器的主进程负责管理它启动的全部进程。</p>
+<p>在某些条件下，主进程由于出错而退出，容器退出时，主进程并不能优雅地处理停止的子进程。</p>
+<p>如果你的进程会出现上述情况，你启动容器时可以使用 <code>--init</code> 标志，在容器内插入一个简易的初始化进程作为主进程，容器退出时<code>INIT</code><br>
+处理这些停止的子进程 ---- 子进程作为孤儿进程会被托管到 INIT 进程</p>
+<p>用上述方式管理容器的生命周期比使用笨重的 <code>sysinit</code>, <code>upstart</code>, 或者 <code>systemd</code> 更优雅</p>
+<p>如果需要在一个容器内运行多个服务，你可以通过下面几种不同方式解决。</p>
+<ul>
+<li>
+<p>将全部的命令都封装到脚本中，并将脚本作为 CMD 执行。这是一个非常原生的做法。<br>
+比如</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">#!/bin/bash</span><br><span class="line"></span><br><span class="line"># Start the first process</span><br><span class="line">./my_first_process -D</span><br><span class="line">status=$?</span><br><span class="line">if [ $status -ne 0 ]; then</span><br><span class="line">  echo &quot;Failed to start my_first_process: $status&quot;</span><br><span class="line">  exit $status</span><br><span class="line">fi</span><br><span class="line"></span><br><span class="line"># Start the second process</span><br><span class="line">./my_second_process -D</span><br><span class="line">status=$?</span><br><span class="line">if [ $status -ne 0 ]; then</span><br><span class="line">  echo &quot;Failed to start my_second_process: $status&quot;</span><br><span class="line">  exit $status</span><br><span class="line">fi</span><br><span class="line"></span><br><span class="line"># Naive check runs checks once a minute to see if either of the processes exited.</span><br><span class="line"># This illustrates part of the heavy lifting you need to do if you want to run</span><br><span class="line"># more than one service in a container. The container exits with an error</span><br><span class="line"># if it detects that either of the processes has exited.</span><br><span class="line"># Otherwise it loops forever, waking up every 60 seconds</span><br><span class="line"></span><br><span class="line">while sleep 60; do</span><br><span class="line">  ps aux |grep my_first_process |grep -q -v grep</span><br><span class="line">  PROCESS_1_STATUS=$?</span><br><span class="line">  ps aux |grep my_second_process |grep -q -v grep</span><br><span class="line">  PROCESS_2_STATUS=$?</span><br><span class="line">  # If the greps above find anything, they exit with 0 status</span><br><span class="line">  # If they are not both 0, then something is wrong</span><br><span class="line">  if [ $PROCESS_1_STATUS -ne 0 -o $PROCESS_2_STATUS -ne 0 ]; then</span><br><span class="line">    echo &quot;One of the processes has already exited.&quot;</span><br><span class="line">    exit 1</span><br><span class="line">  fi</span><br><span class="line">done</span><br></pre></td></tr></table></figure>
+<p>Dockerfile</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">FROM ubuntu:latest</span><br><span class="line">COPY my_first_process my_first_process</span><br><span class="line">COPY my_second_process my_second_process</span><br><span class="line">COPY my_wrapper_script.sh my_wrapper_script.sh</span><br><span class="line">CMD ./my_wrapper_script.sh</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>如果你先启动主进程但暂时需要在运行其他的进程（比如与主进程交互），那你可以使用 bash 的任务控制解决。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># turn on bash&#x27;s job control</span></span><br><span class="line"><span class="built_in">set</span> -m</span><br><span class="line"></span><br><span class="line"><span class="comment"># Start the primary process and put it in the background</span></span><br><span class="line">./my_main_process &amp;</span><br><span class="line"></span><br><span class="line"><span class="comment"># Start the helper process</span></span><br><span class="line">./my_helper_process</span><br><span class="line"></span><br><span class="line"><span class="comment"># the my_helper_process might need to know how to wait on the</span></span><br><span class="line"><span class="comment"># primary process to start before it does its work and returns</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment"># now we bring the primary process back into the foreground</span></span><br><span class="line"><span class="comment"># and leave it there</span></span><br><span class="line"><span class="built_in">fg</span> %1</span><br></pre></td></tr></table></figure>
+<p>Dockerfile</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">FROM ubuntu:latest</span><br><span class="line">COPY my_main_process my_main_process</span><br><span class="line">COPY my_helper_process my_helper_process</span><br><span class="line">COPY my_wrapper_script.sh my_wrapper_script.sh</span><br><span class="line">CMD ./my_wrapper_script.sh</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>使用一个像 <code>supervisord</code> 一样的进程管理器。这是一个重量级的方法，需要将 <code>supervisord</code> 和它的配置文件打包到镜像（或者直接使用基于 <code>supervisord</code>的镜像），然后启动supervisor，它会根据配置文件代你管理进程，下面是一个使用 supervisord 的 Dockerfill，我们假定已经预先写好了 <code>supervisord.conf</code>，<code>my_first_process</code>, <code>my_second_process</code>，并放到与 <code>Dockerfile</code> 同级的目录</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">FROM ubuntu:latest</span><br><span class="line">RUN apt-get update &amp;&amp; apt-get install -y supervisor</span><br><span class="line">RUN mkdir -p /var/log/supervisor</span><br><span class="line">COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf</span><br><span class="line">COPY my_first_process my_first_process</span><br><span class="line">COPY my_second_process my_second_process</span><br><span class="line">CMD [&quot;/usr/bin/supervisord&quot;]</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E4%BA%91%E8%AE%A1%E7%AE%97/" rel="tag"># 云计算</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2019/09/17/18/" rel="prev" title="罗马数字求和-leetcode13">
+      <i class="fa fa-chevron-left"></i> 罗马数字求和-leetcode13
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2019/10/22/23/" rel="next" title="定点数与浮点数的区别">
+      定点数与浮点数的区别 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

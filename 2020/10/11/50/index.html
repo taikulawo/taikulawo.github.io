@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="我们明明可以在async之后直接调用dispatch，为什么又要多此一举引入中间件呢？ 为什么需要中间件来处理Redux异步数据流？ 如果异步之后直接Dispatch 1234567891011121314&#x2F;&#x2F; action creatorfunction loadData(dispatch, userId) &amp;#123; &#x2F;&#x2F; needs to dispatch, so it is first">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redux为什么需要中间件来处理异步数据流？">
+<meta property="og:url" content="http://www.chaochaogege.com/2020/10/11/50/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="我们明明可以在async之后直接调用dispatch，为什么又要多此一举引入中间件呢？ 为什么需要中间件来处理Redux异步数据流？ 如果异步之后直接Dispatch 1234567891011121314&#x2F;&#x2F; action creatorfunction loadData(dispatch, userId) &amp;#123; &#x2F;&#x2F; needs to dispatch, so it is first">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2020-10-11T00:00:00.000Z">
+<meta property="article:modified_time" content="2020-10-11T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="前端">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2020/10/11/50/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Redux为什么需要中间件来处理异步数据流？ | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2020/10/11/50/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Redux为什么需要中间件来处理异步数据流？
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-10-11 00:00:00" itemprop="dateCreated datePublished" datetime="2020-10-11T00:00:00+00:00">2020-10-11</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>我们明明可以在async之后直接调用dispatch，为什么又要多此一举引入中间件呢？</p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/34570758/why-do-we-need-middleware-for-async-flow-in-redux">为什么需要中间件来处理Redux异步数据流？</a></p>
+<h2 id="如果异步之后直接Dispatch">如果异步之后直接Dispatch</h2>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// action creator</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">loadData</span>(<span class="params">dispatch, userId</span>) &#123; <span class="comment">// needs to dispatch, so it is first argument</span></span><br><span class="line">  <span class="keyword">return</span> <span class="title function_">fetch</span>(<span class="string">`http://data.com/<span class="subst">$&#123;userId&#125;</span>`</span>)</span><br><span class="line">    .<span class="title function_">then</span>(<span class="function"><span class="params">res</span> =&gt;</span> res.<span class="title function_">json</span>())f</span><br><span class="line">    .<span class="title function_">then</span>(</span><br><span class="line">      <span class="function"><span class="params">data</span> =&gt;</span> <span class="title function_">dispatch</span>(&#123; <span class="attr">type</span>: <span class="string">&#x27;LOAD_DATA_SUCCESS&#x27;</span>, data &#125;),</span><br><span class="line">      <span class="function"><span class="params">err</span> =&gt;</span> <span class="title function_">dispatch</span>(&#123; <span class="attr">type</span>: <span class="string">&#x27;LOAD_DATA_FAILURE&#x27;</span>, err &#125;)</span><br><span class="line">    );</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// component</span></span><br><span class="line"><span class="title function_">componentWillMount</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="title function_">loadData</span>(<span class="variable language_">this</span>.<span class="property">props</span>.<span class="property">dispatch</span>, <span class="variable language_">this</span>.<span class="property">props</span>.<span class="property">userId</span>); <span class="comment">// don&#x27;t forget to pass dispatch</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="如果使用-react-thunk">如果使用 <code>react-thunk</code></h2>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// action creator</span></span><br><span class="line"><span class="keyword">function</span> <span class="title function_">loadData</span>(<span class="params">userId</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="function"><span class="params">dispatch</span> =&gt;</span> <span class="title function_">fetch</span>(<span class="string">`http://data.com/<span class="subst">$&#123;userId&#125;</span>`</span>) <span class="comment">// Redux Thunk handles these</span></span><br><span class="line">    .<span class="title function_">then</span>(<span class="function"><span class="params">res</span> =&gt;</span> res.<span class="title function_">json</span>())</span><br><span class="line">    .<span class="title function_">then</span>(</span><br><span class="line">      <span class="function"><span class="params">data</span> =&gt;</span> <span class="title function_">dispatch</span>(&#123; <span class="attr">type</span>: <span class="string">&#x27;LOAD_DATA_SUCCESS&#x27;</span>, data &#125;),</span><br><span class="line">      <span class="function"><span class="params">err</span> =&gt;</span> <span class="title function_">dispatch</span>(&#123; <span class="attr">type</span>: <span class="string">&#x27;LOAD_DATA_FAILURE&#x27;</span>, err &#125;)</span><br><span class="line">    );</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// component</span></span><br><span class="line"><span class="title function_">componentWillMount</span>(<span class="params"></span>) &#123;</span><br><span class="line">  <span class="variable language_">this</span>.<span class="property">props</span>.<span class="title function_">dispatch</span>(<span class="title function_">loadData</span>(<span class="variable language_">this</span>.<span class="property">props</span>.<span class="property">userId</span>)); <span class="comment">// dispatch like you usually do</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，<code>thunk</code> 只是更改了你的写法。因为不使用 <code>thunk</code> 你需要每次传递给异步函数 <code>dispatch</code>，使用 <code>thunk</code> 后在组件中就可以调用 <code>dispatch</code>，组件不再需要关注 <code>dispatch</code> 派发的函数是不是异步，组件只是发出一个请求而已。组件connect的数据通过 <code>dispatch =&gt; reducer</code> 流程最后会触发更新。</p>
+<h2 id="Redux-thunk出现是为了解决什么问题？">Redux-thunk出现是为了解决什么问题？</h2>
+<p>优雅地进行异步调用，但thunk并不能终止请求，比如component unmounted 之后API调用结束这时会产生副作用，容易导致内存泄漏。<br>
+<code>react saga</code>就是为解决上述问题而生的，当然，后面再说 :)</p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/35411423/how-to-dispatch-a-redux-action-with-a-timeout/35415559#35415559">How to dispatch a Redux action with a timeout?</a></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%89%8D%E7%AB%AF/" rel="tag"># 前端</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2020/09/15/48/" rel="prev" title="Actor Model 编程模型浅谈">
+      <i class="fa fa-chevron-left"></i> Actor Model 编程模型浅谈
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2020/10/11/49/" rel="next" title="React Hook使用小记录">
+      React Hook使用小记录 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A6%82%E6%9E%9C%E5%BC%82%E6%AD%A5%E4%B9%8B%E5%90%8E%E7%9B%B4%E6%8E%A5Dispatch"><span class="nav-number">1.</span> <span class="nav-text">如果异步之后直接Dispatch</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A6%82%E6%9E%9C%E4%BD%BF%E7%94%A8-react-thunk"><span class="nav-number">2.</span> <span class="nav-text">如果使用 react-thunk</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Redux-thunk%E5%87%BA%E7%8E%B0%E6%98%AF%E4%B8%BA%E4%BA%86%E8%A7%A3%E5%86%B3%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98%EF%BC%9F"><span class="nav-number">3.</span> <span class="nav-text">Redux-thunk出现是为了解决什么问题？</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
