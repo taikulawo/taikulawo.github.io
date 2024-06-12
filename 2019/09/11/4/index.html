@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="这里记录一下Vue的 Virtual DOM 比较过程 来自于 cn.vuejs.org patchVnode 函数断点 当我们对于data进行修改之后会产生新的 VDOM 集合 这里是 vnode oldVnode则代表修改之前的 VDOM 123456789101112131415161718192021222324252627282930313233343536373839404142434">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Vue VNode Patch 分析">
+<meta property="og:url" content="http://www.chaochaogege.com/2019/09/11/4/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="这里记录一下Vue的 Virtual DOM 比较过程 来自于 cn.vuejs.org patchVnode 函数断点 当我们对于data进行修改之后会产生新的 VDOM 集合 这里是 vnode oldVnode则代表修改之前的 VDOM 123456789101112131415161718192021222324252627282930313233343536373839404142434">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2019-09-11T00:00:00.000Z">
+<meta property="article:modified_time" content="2019-09-11T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="超超哥哥">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2019/09/11/4/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Vue VNode Patch 分析 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2019/09/11/4/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Vue VNode Patch 分析
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2019-09-11 00:00:00" itemprop="dateCreated datePublished" datetime="2019-09-11T00:00:00+00:00">2019-09-11</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>这里记录一下Vue的 Virtual DOM 比较过程<br>
+来自于 <code>cn.vuejs.org</code> <code>patchVnode</code> 函数断点</p>
+<p>当我们对于data进行修改之后会产生新的 VDOM 集合<br>
+这里是 vnode</p>
+<p>oldVnode则代表修改之前的 VDOM</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">patchVnode</span> (</span><br><span class="line">    oldVnode,</span><br><span class="line">    vnode,</span><br><span class="line">    insertedVnodeQueue,</span><br><span class="line">    ownerArray,</span><br><span class="line">    index,</span><br><span class="line">    removeOnly</span><br><span class="line">  ) &#123;</span><br><span class="line">    <span class="keyword">if</span> (oldVnode === vnode) &#123;</span><br><span class="line">      <span class="keyword">return</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isDef</span>(vnode.<span class="property">elm</span>) &amp;&amp; <span class="title function_">isDef</span>(ownerArray)) &#123;</span><br><span class="line">      <span class="comment">// clone reused vnode</span></span><br><span class="line">      vnode = ownerArray[index] = <span class="title function_">cloneVNode</span>(vnode)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">const</span> elm = vnode.<span class="property">elm</span> = oldVnode.<span class="property">elm</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isTrue</span>(oldVnode.<span class="property">isAsyncPlaceholder</span>)) &#123;</span><br><span class="line">      <span class="keyword">if</span> (<span class="title function_">isDef</span>(vnode.<span class="property">asyncFactory</span>.<span class="property">resolved</span>)) &#123;</span><br><span class="line">        <span class="title function_">hydrate</span>(oldVnode.<span class="property">elm</span>, vnode, insertedVnodeQueue)</span><br><span class="line">      &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        vnode.<span class="property">isAsyncPlaceholder</span> = <span class="literal">true</span></span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">return</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// reuse element for static trees.</span></span><br><span class="line">    <span class="comment">// note we only do this if the vnode is cloned -</span></span><br><span class="line">    <span class="comment">// if the new node is not cloned it means the render functions have been</span></span><br><span class="line">    <span class="comment">// reset by the hot-reload-api and we need to do a proper re-render.</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isTrue</span>(vnode.<span class="property">isStatic</span>) &amp;&amp;</span><br><span class="line">      <span class="title function_">isTrue</span>(oldVnode.<span class="property">isStatic</span>) &amp;&amp;</span><br><span class="line">      vnode.<span class="property">key</span> === oldVnode.<span class="property">key</span> &amp;&amp;</span><br><span class="line">      (<span class="title function_">isTrue</span>(vnode.<span class="property">isCloned</span>) || <span class="title function_">isTrue</span>(vnode.<span class="property">isOnce</span>))</span><br><span class="line">    ) &#123;</span><br><span class="line">      vnode.<span class="property">componentInstance</span> = oldVnode.<span class="property">componentInstance</span></span><br><span class="line">      <span class="keyword">return</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">let</span> i</span><br><span class="line">    <span class="keyword">const</span> data = vnode.<span class="property">data</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isDef</span>(data) &amp;&amp; <span class="title function_">isDef</span>(i = data.<span class="property">hook</span>) &amp;&amp; <span class="title function_">isDef</span>(i = i.<span class="property">prepatch</span>)) &#123;</span><br><span class="line">      <span class="title function_">i</span>(oldVnode, vnode)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">const</span> oldCh = oldVnode.<span class="property">children</span></span><br><span class="line">    <span class="keyword">const</span> ch = vnode.<span class="property">children</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isDef</span>(data) &amp;&amp; <span class="title function_">isPatchable</span>(vnode)) &#123;</span><br><span class="line">      <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; cbs.<span class="property">update</span>.<span class="property">length</span>; ++i) cbs.<span class="property">update</span>[i](oldVnode, vnode)</span><br><span class="line">      <span class="keyword">if</span> (<span class="title function_">isDef</span>(i = data.<span class="property">hook</span>) &amp;&amp; <span class="title function_">isDef</span>(i = i.<span class="property">update</span>)) <span class="title function_">i</span>(oldVnode, vnode)</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isUndef</span>(vnode.<span class="property">text</span>)) &#123;</span><br><span class="line">      <span class="keyword">if</span> (<span class="title function_">isDef</span>(oldCh) &amp;&amp; <span class="title function_">isDef</span>(ch)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (oldCh !== ch) <span class="title function_">updateChildren</span>(elm, oldCh, ch, insertedVnodeQueue, removeOnly)</span><br><span class="line">      &#125; <span class="keyword">else</span> <span class="keyword">if</span> (<span class="title function_">isDef</span>(ch)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (process.<span class="property">env</span>.<span class="property">NODE_ENV</span> !== <span class="string">&#x27;production&#x27;</span>) &#123;</span><br><span class="line">          <span class="title function_">checkDuplicateKeys</span>(ch)</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (<span class="title function_">isDef</span>(oldVnode.<span class="property">text</span>)) nodeOps.<span class="title function_">setTextContent</span>(elm, <span class="string">&#x27;&#x27;</span>)</span><br><span class="line">        <span class="title function_">addVnodes</span>(elm, <span class="literal">null</span>, ch, <span class="number">0</span>, ch.<span class="property">length</span> - <span class="number">1</span>, insertedVnodeQueue)</span><br><span class="line">      &#125; <span class="keyword">else</span> <span class="keyword">if</span> (<span class="title function_">isDef</span>(oldCh)) &#123;</span><br><span class="line">        <span class="title function_">removeVnodes</span>(elm, oldCh, <span class="number">0</span>, oldCh.<span class="property">length</span> - <span class="number">1</span>)</span><br><span class="line">      &#125; <span class="keyword">else</span> <span class="keyword">if</span> (<span class="title function_">isDef</span>(oldVnode.<span class="property">text</span>)) &#123;</span><br><span class="line">        nodeOps.<span class="title function_">setTextContent</span>(elm, <span class="string">&#x27;&#x27;</span>)</span><br><span class="line">      &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (oldVnode.<span class="property">text</span> !== vnode.<span class="property">text</span>) &#123;</span><br><span class="line">      nodeOps.<span class="title function_">setTextContent</span>(elm, vnode.<span class="property">text</span>)</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (<span class="title function_">isDef</span>(data)) &#123;</span><br><span class="line">      <span class="keyword">if</span> (<span class="title function_">isDef</span>(i = data.<span class="property">hook</span>) &amp;&amp; <span class="title function_">isDef</span>(i = i.<span class="property">postpatch</span>)) <span class="title function_">i</span>(oldVnode, vnode)</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+<p>Vue 会在 <code>updateChildren</code> 中比较 <code>VNode</code><br>
+每次调用<code>sameVnode</code>，当节点相同时调用 <code>patchVNode</code><br>
+<code>patchVNode</code>中会再次调用 <code>updateChildren</code> 进行更新</p>
+<p>这是一个间接的递归</p>
+<p>有个疑问<br>
+Vue一直再调用 updateChildren</p>
+<p>既然是diff，应该会生成一个差异补丁<br>
+但 updateChildren 并未有返回值，那么patch之后最终如何渲染到UI上的？</p>
+<hr>
+<p>Vue在模板编译完成之后会生成组件的渲染函数</p>
+<p>这个渲染函数调用之后会返回VNode节点</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">vnode = render.<span class="title function_">call</span>(vm.<span class="property">_renderProxy</span>, vm.<span class="property">$createElement</span>);</span><br></pre></td></tr></table></figure>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">updateComponent = <span class="keyword">function</span> (<span class="params"></span>) &#123;</span><br><span class="line">    vm.<span class="title function_">_update</span>(vm.<span class="title function_">_render</span>(), hydrating);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p><code>vm_render()</code> 调用render function 获得VNode，然后进行_update，根据VNode将DOM渲染到HTML中</p>
+<p>也即，<code>render</code> 获得 <code>VDOM</code>， <code>_update</code> 根据 <code>VDOM</code> 来渲染 <code>DOM</code></p>
+<hr>
+<p>如果没记错的话 target stack 是 Vue2 中才引入的机制，而 Vue1 中则是仅靠 Dep.target 来进行依赖收集的。根据我自己对 Vue1 和 Vue2 差异的理解，引入 target stack 的原因在于 Vue2 使用了新的视图更新方式。</p>
+<p>具体来说，vue1 视图更新采用的是细粒度绑定的方式，而 vue2 采取的是 virtual DOM 的方式。举个例子来说可能比较容易理解，对于下面的模版：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&lt;!-- root --&gt;</span><br><span class="line">&lt;div&gt;</span><br><span class="line">&#123;&#123; a &#125;&#125;</span><br><span class="line">&lt;my :text=&quot;b&quot;&gt;&lt;/my&gt;</span><br><span class="line">&#123;&#123; c &#125;&#125;</span><br><span class="line">&lt;div&gt;</span><br><span class="line"></span><br><span class="line">&lt;!-- component my --&gt;</span><br><span class="line">&lt;span&gt;&#123;&#123; b &#125;&#125;&lt;/span&gt;</span><br></pre></td></tr></table></figure>
+<p>Vue1 的处理方式可以简化理解为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">watch(for a) -&gt; directive(update &#123;&#123; a &#125;&#125;)</span><br><span class="line">watch(for b) -&gt; directive(update &#123;&#123; b &#125;&#125;)</span><br><span class="line">watch(for c) -&gt; directive(update &#123;&#123; c &#125;&#125;)</span><br></pre></td></tr></table></figure>
+<p>由于是数据到 DOM 操作操作指令的细粒度绑定，所以不论是指令还是 watcher 都是原子化的。对于上面的模版，在处理完  的视图绑定后，创建新的 vue 实例 my 并且处理  的视图绑定，随后继续处理 的绑定。</p>
+<p>而在 Vue2 中情况就完全不同，视图被抽象为一个 render 函数，一个 render 函数只会生成一个 watcher，其处理机制可以简化理解为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">renderRoot () &#123;</span><br><span class="line">	...</span><br><span class="line">	renderMy ()</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到在 Vue2 中组件数的结构在视图渲染时就映射为 render 函数的嵌套调用，有嵌套调用就会有调用栈。当 evaluate root 时，调用到 my 的 render 函数，此时就需要中断 root 而进行 my 的 evaluate，当 my 的 evaluate 结束后 root 将会继续进行，这就是 target stack 的意义。</p>
+<p>未完待续。。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2019/09/11/5/" rel="prev" title="Golang使用ProtoBuf">
+      <i class="fa fa-chevron-left"></i> Golang使用ProtoBuf
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2019/09/12/9/" rel="next" title="神奇的优先队列">
+      神奇的优先队列 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

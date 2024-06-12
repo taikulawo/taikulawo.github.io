@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="以联发科 mt7921 无线网卡驱动为例  kernel mt7921&#x2F; 下有pci，usb接口的驱动，usb接口驱动入口是usb.c。手里有mt7921芯片的USB无线网卡，对应的驱动为mt7921u  pci驱动为 mt7921e USB接口 MT7921 外观  PCI接口的MT7921网卡外观">
+<meta property="og:type" content="article">
+<meta property="og:title" content="mt7921-usb驱动注册分析">
+<meta property="og:url" content="http://www.chaochaogege.com/2023/11/03/60/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="以联发科 mt7921 无线网卡驱动为例  kernel mt7921&#x2F; 下有pci，usb接口的驱动，usb接口驱动入口是usb.c。手里有mt7921芯片的USB无线网卡，对应的驱动为mt7921u  pci驱动为 mt7921e USB接口 MT7921 外观  PCI接口的MT7921网卡外观">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-15-36.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-16-09.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-17-27.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-16-58.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-16-34.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-16-46.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-17-20-30-16.png">
+<meta property="article:published_time" content="2023-11-03T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-11-14T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="Kernel">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-15-36.png">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2023/11/03/60/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>mt7921-usb驱动注册分析 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2023/11/03/60/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          mt7921-usb驱动注册分析
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-11-03 00:00:00" itemprop="dateCreated datePublished" datetime="2023-11-03T00:00:00+00:00">2023-11-03</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2023-11-14 00:00:00" itemprop="dateModified" datetime="2023-11-14T00:00:00+00:00">2023-11-14</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>以联发科 <code>mt7921</code> 无线网卡驱动为例</p>
+<blockquote>
+<p>kernel <code>mt7921/</code> 下有pci，usb接口的驱动，usb接口驱动入口是<code>usb.c</code>。手里有mt7921芯片的USB无线网卡，对应的驱动为mt7921u</p>
+</blockquote>
+<p>pci驱动为 <code>mt7921e</code><br>
+USB接口 MT7921 外观<br>
+<img src="/assets/2023-10-10-15-15-36.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>PCI接口的MT7921网卡外观</p>
+<p><img src="/assets/2023-10-10-15-16-09.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>驱动采用USB总线注册到kernel，使用kernel提供的 <code>module_usb_driver(mt7921u_driver);</code>，调用 <code>usb_register_driver</code>进行注册</p>
+<p><img src="/assets/2023-10-10-15-17-27.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>kernel驱动采用callback式，，linux为各种接口设备提供helper</p>
+<p>驱动使用kernel <code>module_usb_driver</code>进行注册</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> module_usb_driver(__usb_driver) \</span></span><br><span class="line"><span class="meta">    module_driver(__usb_driver, usb_register, \</span></span><br><span class="line"><span class="meta">               usb_deregister)</span></span><br></pre></td></tr></table></figure>
+<p>经过usb的一系列宏替换，<code>module_init</code>调用usb的通用init函数 <code>usb_register</code> 初始化，最终调用 <code>struct usb_driver#probe</code> 开始驱动初始化</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> module_driver(__driver, __register, __unregister, ...) \</span></span><br><span class="line"><span class="meta">static int __init __driver##_init(void) \</span></span><br><span class="line"><span class="meta">&#123; \</span></span><br><span class="line"><span class="meta">    return __register(&amp;(__driver) , ##__VA_ARGS__); \</span></span><br><span class="line"><span class="meta">&#125; \</span></span><br><span class="line"><span class="meta">module_init(__driver##_init); \</span></span><br><span class="line"><span class="meta">static void __exit __driver##_exit(void) \</span></span><br><span class="line"><span class="meta">&#123; \</span></span><br><span class="line"><span class="meta">    __unregister(&amp;(__driver) , ##__VA_ARGS__); \</span></span><br><span class="line"><span class="meta">&#125; \</span></span><br><span class="line"><span class="meta">module_exit(__driver##_exit);</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>usb 是接口类型，usb接口探测完成后，驱动调用kernel 80211一系列helper，在kernel中注册为无线网卡。</p>
+<p><img src="/assets/2023-10-10-15-16-58.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>驱动的80211回调。有数据需要发送kernel则调用<code>.tx</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">ieee80211_ops</span> <span class="title">mt7921_ops</span> =</span> &#123;</span><br><span class="line">    .tx = mt792x_tx,</span><br><span class="line">    .start = mt7921_start,</span><br><span class="line">    .stop = mt7921_stop,</span><br><span class="line">    .add_interface = mt7921_add_interface,</span><br><span class="line">    .remove_interface = mt792x_remove_interface,</span><br><span class="line">    .config = mt7921_config,</span><br><span class="line">    .conf_tx = mt792x_conf_tx,</span><br><span class="line">    .configure_filter = mt7921_configure_filter,</span><br><span class="line">    .bss_info_changed = mt7921_bss_info_changed,</span><br><span class="line">    .start_ap = mt7921_start_ap,</span><br><span class="line">    .stop_ap = mt7921_stop_ap,</span><br><span class="line">    .sta_state = mt7921_sta_state,</span><br><span class="line">    .sta_pre_rcu_remove = mt76_sta_pre_rcu_remove,</span><br><span class="line">    .set_key = mt7921_set_key,</span><br><span class="line">    .sta_set_decap_offload = mt7921_sta_set_decap_offload,</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_IPV6)</span></span><br><span class="line">    .ipv6_addr_change = mt7921_ipv6_addr_change,</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span> <span class="comment">/* CONFIG_IPV6 */</span></span></span><br><span class="line">    .ampdu_action = mt7921_ampdu_action,</span><br><span class="line">    .set_rts_threshold = mt7921_set_rts_threshold,</span><br><span class="line">    .wake_tx_queue = mt76_wake_tx_queue,</span><br><span class="line">    .release_buffered_frames = mt76_release_buffered_frames,</span><br><span class="line">    .channel_switch_beacon = mt7921_channel_switch_beacon,</span><br><span class="line">    .get_txpower = mt76_get_txpower,</span><br><span class="line">    .get_stats = mt792x_get_stats,</span><br><span class="line">    .get_et_sset_count = mt792x_get_et_sset_count,</span><br><span class="line">    .get_et_strings = mt792x_get_et_strings,</span><br><span class="line">    .get_et_stats = mt792x_get_et_stats,</span><br><span class="line">    .get_tsf = mt792x_get_tsf,</span><br><span class="line">    .set_tsf = mt792x_set_tsf,</span><br><span class="line">    .get_survey = mt76_get_survey,</span><br><span class="line">    .get_antenna = mt76_get_antenna,</span><br><span class="line">    .set_antenna = mt7921_set_antenna,</span><br><span class="line">    .set_coverage_class = mt792x_set_coverage_class,</span><br><span class="line">    .hw_scan = mt7921_hw_scan,</span><br><span class="line">    .cancel_hw_scan = mt7921_cancel_hw_scan,</span><br><span class="line">    .sta_statistics = mt792x_sta_statistics,</span><br><span class="line">    .sched_scan_start = mt7921_start_sched_scan,</span><br><span class="line">    .sched_scan_stop = mt7921_stop_sched_scan,</span><br><span class="line">    CFG80211_TESTMODE_CMD(mt7921_testmode_cmd)</span><br><span class="line">    CFG80211_TESTMODE_DUMP(mt7921_testmode_dump)</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_PM</span></span><br><span class="line">    .suspend = mt7921_suspend,</span><br><span class="line">    .resume = mt7921_resume,</span><br><span class="line">    .set_wakeup = mt792x_set_wakeup,</span><br><span class="line">    .set_rekey_data = mt7921_set_rekey_data,</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span> <span class="comment">/* CONFIG_PM */</span></span></span><br><span class="line">    .flush = mt792x_flush,</span><br><span class="line">    .set_sar_specs = mt7921_set_sar_specs,</span><br><span class="line">    .remain_on_channel = mt7921_remain_on_channel,</span><br><span class="line">    .cancel_remain_on_channel = mt7921_cancel_remain_on_channel,</span><br><span class="line">    .add_chanctx = mt7921_add_chanctx,</span><br><span class="line">    .remove_chanctx = mt7921_remove_chanctx,</span><br><span class="line">    .change_chanctx = mt7921_change_chanctx,</span><br><span class="line">    .assign_vif_chanctx = mt792x_assign_vif_chanctx,</span><br><span class="line">    .unassign_vif_chanctx = mt792x_unassign_vif_chanctx,</span><br><span class="line">    .mgd_prepare_tx = mt7921_mgd_prepare_tx,</span><br><span class="line">    .mgd_complete_tx = mt7921_mgd_complete_tx,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>追踪 <code>.tx</code>调用路径<br>
+<img src="/assets/2023-10-10-15-16-34.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="收包送到kernel协议栈路径">收包送到kernel协议栈路径</h2>
+<p><img src="/assets/2023-10-10-15-16-46.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>调用路径有两个，pci 接口走的DMA，而USB接口则是kthread polling</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __mt76_worker_fn(<span class="type">void</span> *ptr)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mt76_worker</span> *<span class="title">w</span> =</span> ptr;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">while</span> (!kthread_should_stop()) &#123;</span><br><span class="line">        set_current_state(TASK_INTERRUPTIBLE);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (kthread_should_park()) &#123;</span><br><span class="line">            kthread_parkme();</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!test_and_clear_bit(MT76_WORKER_SCHEDULED, &amp;w-&gt;state)) &#123;</span><br><span class="line">            schedule();</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        set_bit(MT76_WORKER_RUNNING, &amp;w-&gt;state);</span><br><span class="line">        set_current_state(TASK_RUNNING);</span><br><span class="line">        <span class="comment">// kthread 持续调用 mt76u_rx_worker</span></span><br><span class="line">        w-&gt;fn(w);</span><br><span class="line">        cond_resched();</span><br><span class="line">        clear_bit(MT76_WORKER_RUNNING, &amp;w-&gt;state);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// https://github.com/torvalds/linux/blob/v6.6/drivers/net/wireless/mediatek/mt76/usb.c#L628</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">mt76u_rx_worker</span><span class="params">(<span class="keyword">struct</span> mt76_worker *w)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mt76_usb</span> *<span class="title">usb</span> =</span> container_of(w, <span class="keyword">struct</span> mt76_usb, rx_worker);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mt76_dev</span> *<span class="title">dev</span> =</span> container_of(usb, <span class="keyword">struct</span> mt76_dev, usb);</span><br><span class="line">    <span class="type">int</span> i;</span><br><span class="line"></span><br><span class="line">    rcu_read_lock();</span><br><span class="line">    <span class="comment">// 遍历每个队列处理rx数据</span></span><br><span class="line">    mt76_for_each_q_rx(dev, i)</span><br><span class="line">        mt76u_process_rx_queue(dev, &amp;dev-&gt;q_rx[i]);</span><br><span class="line">    rcu_read_unlock();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="qemu绑定mt7921u网卡，分析驱动调用栈">qemu绑定mt7921u网卡，分析驱动调用栈</h2>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">qemu-system-x86_64 --kernel ./arch/x86/boot/bzImage -initrd ./rootfs.cpio -device e1000,netdev=eth0 -netdev user,<span class="built_in">id</span>=eth0,hostfwd=tcp::5555-:22,net=192.168.76.0/24,dhcpstart=192.168.76.9  -append <span class="string">&quot;nokaslr console=ttyS0&quot;</span> -S -nographic -gdb tcp::1234 -virtfs <span class="built_in">local</span>,path=/,security_model=none,mount_tag=guestroot -usb -device usb-host,vendorid=0x0e8d,productid=0x7961</span><br></pre></td></tr></table></figure>
+<p><img src="/assets/2023-10-17-20-30-16.png" alt="" style="max-width: 400px;width: 100%;"></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Kernel/" rel="tag"># Kernel</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/11/03/62/" rel="prev" title="发包callstack分析">
+      <i class="fa fa-chevron-left"></i> 发包callstack分析
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2023/11/07/64/" rel="next" title="epoll触发机制分析">
+      epoll触发机制分析 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%94%B6%E5%8C%85%E9%80%81%E5%88%B0kernel%E5%8D%8F%E8%AE%AE%E6%A0%88%E8%B7%AF%E5%BE%84"><span class="nav-number">1.</span> <span class="nav-text">收包送到kernel协议栈路径</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#qemu%E7%BB%91%E5%AE%9Amt7921u%E7%BD%91%E5%8D%A1%EF%BC%8C%E5%88%86%E6%9E%90%E9%A9%B1%E5%8A%A8%E8%B0%83%E7%94%A8%E6%A0%88"><span class="nav-number">2.</span> <span class="nav-text">qemu绑定mt7921u网卡，分析驱动调用栈</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

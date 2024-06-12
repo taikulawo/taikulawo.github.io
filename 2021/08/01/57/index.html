@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="从tun读出来后再写入tun，下次读还会将自己刚写入的packet读出来，如果设置默认路由是tun网卡，会导致死循环。下文会介绍解决routing loop的多种方法 https:&#x2F;&#x2F;www.kernel.org&#x2F;doc&#x2F;Documentation&#x2F;networking&#x2F;tuntap.txt  How does Virtual network device actually work ? Virt">
+<meta property="og:type" content="article">
+<meta property="og:title" content="记录 Tun 透明代理的多种实现方式，以及如何避免 routing loop">
+<meta property="og:url" content="http://www.chaochaogege.com/2021/08/01/57/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="从tun读出来后再写入tun，下次读还会将自己刚写入的packet读出来，如果设置默认路由是tun网卡，会导致死循环。下文会介绍解决routing loop的多种方法 https:&#x2F;&#x2F;www.kernel.org&#x2F;doc&#x2F;Documentation&#x2F;networking&#x2F;tuntap.txt  How does Virtual network device actually work ? Virt">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://user-images.githubusercontent.com/24750337/127586791-76ad6390-d023-481a-af46-765dee5167f7.png">
+<meta property="og:image" content="https://user-images.githubusercontent.com/24750337/127739003-77a92416-6c4f-4213-8659-20cab3255d79.png">
+<meta property="og:image" content="https://user-images.githubusercontent.com/24750337/127967254-038f835a-259d-48d4-97c1-9b5065f8fd5b.png">
+<meta property="article:published_time" content="2021-08-01T00:00:00.000Z">
+<meta property="article:modified_time" content="2024-02-08T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="net">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://user-images.githubusercontent.com/24750337/127586791-76ad6390-d023-481a-af46-765dee5167f7.png">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2021/08/01/57/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>记录 Tun 透明代理的多种实现方式，以及如何避免 routing loop | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2021/08/01/57/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          记录 Tun 透明代理的多种实现方式，以及如何避免 routing loop
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-08-01 00:00:00" itemprop="dateCreated datePublished" datetime="2021-08-01T00:00:00+00:00">2021-08-01</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-02-08 00:00:00" itemprop="dateModified" datetime="2024-02-08T00:00:00+00:00">2024-02-08</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>从tun读出来后再写入tun，下次读还会将自己刚写入的packet读出来，如果设置默认路由是tun网卡，会导致死循环。下文会介绍解决routing loop的多种方法</p>
+<p><a target="_blank" rel="noopener" href="https://www.kernel.org/doc/Documentation/networking/tuntap.txt">https://www.kernel.org/doc/Documentation/networking/tuntap.txt</a></p>
+<blockquote>
+<p>How does Virtual network device actually work ?<br>
+Virtual network device can be viewed as a simple Point-to-Point or<br>
+Ethernet device, which instead of receiving packets from a physical<br>
+media, receives them from user space program and instead of sending<br>
+packets via physical media sends them to the user space program.</p>
+<p>Let’s say that you configured IPv6 on the tap0, then whenever<br>
+the kernel sends an IPv6 packet to tap0, it is passed to the application<br>
+(VTun for example). The application encrypts, compresses and sends it to<br>
+the other side over TCP or UDP. The application on the other side decompresses<br>
+and decrypts the data received and writes the packet to the TAP device,<br>
+the kernel handles the packet like it came from real physical device.</p>
+</blockquote>
+<p>一共两个方法， read 和 write</p>
+<p>read from tun读取数据包</p>
+<p>write将数据包写入tun，tun直接将userspace的packet注入内核，就好像内核刚从物理网卡读取出来一样</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/gfreezy/seeker/blob/b5a1b83a24c48bb96fb26cc3d5402dd2cd7159f1/README.adoc#%E6%8C%87%E5%AE%9A-ip-%E6%88%96%E6%9F%90%E7%BD%91%E6%AE%B5%E8%B5%B0%E4%BB%A3%E7%90%86">https://github.com/gfreezy/seeker/blob/b5a1b83a24c48bb96fb26cc3d5402dd2cd7159f1/README.adoc#指定-ip-或某网段走代理</a></p>
+<p><a target="_blank" rel="noopener" href="https://github.com/gfreezy/seeker/blob/b5a1b83a24c48bb96fb26cc3d5402dd2cd7159f1/README.adoc#%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">https://github.com/gfreezy/seeker/blob/b5a1b83a24c48bb96fb26cc3d5402dd2cd7159f1/README.adoc#实现原理</a></p>
+<p><strong>搞这些东西最好在虚拟机，搞坏了还能还原。</strong></p>
+<h2 id="NAT，-转发到socks-server">NAT， 转发到socks server</h2>
+<ol>
+<li>tun读取ip packet，本地启动TcpServer/UduServer</li>
+<li>解析出ip src， dest 信息</li>
+<li>通过fake by ip，利用NAT，获取一个内部网段的唯一ip</li>
+<li>将此数据包的ip dest改为自身ip，并将dest port改为TcpServer 监听的端口</li>
+<li>TcpServer/UDPServer收到请求，根据预设的规则进行判断，最后决定将数据发给 socks server还是直连</li>
+</ol>
+<p>这里的关键是ip packet的 dest port 指向了 TcpServer/UdpServer 监听的端口，通过这种方式，让 IP packet 重新走了一遍OS自身的 tcp/ip stack（好处是借用OS自己的协议栈 <a target="_blank" rel="noopener" href="https://github.com/shadowsocks/shadowsocks-rust/issues/199#issuecomment-603631143">https://github.com/shadowsocks/shadowsocks-rust/issues/199#issuecomment-603631143</a>），同时获取到 src ip 和 dest ip</p>
+<p>实现往往是通过 session 实现类似NAT的功能，packet走完OS自己的协议栈后，能够还原出original destination。</p>
+<p>看下面 Go 和 Rust 的代码，代码是不是非常像？</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/xjdrew/kone/blob/3a6d64a7ad7435134b6039129bd4ec8c5e9fbda5/k1/tcp_relay.go#L144">https://github.com/xjdrew/kone/blob/3a6d64a7ad7435134b6039129bd4ec8c5e9fbda5/k1/tcp_relay.go#L144</a><br>
+<a target="_blank" rel="noopener" href="https://github.com/willdeeper/seeker/blob/d575fe35b55439f207e5b454bbaa3e0da8f87fcd/tun_nat/src/lib.rs#L28">https://github.com/willdeeper/seeker/blob/d575fe35b55439f207e5b454bbaa3e0da8f87fcd/tun_nat/src/lib.rs#L28</a></p>
+<p>类似还有最近（2021/08/10） shadowsocks-rust 搞的tun模式</p>
+<p>随便在tun网段bind某个端口 tcp_daddr<br>
+<a target="_blank" rel="noopener" href="https://github.com/shadowsocks/shadowsocks-rust/blob/4287c2aab8f1826446b68888f58462b4342a0a53/crates/shadowsocks-service/src/local/tun/tcp.rs#L67">https://github.com/shadowsocks/shadowsocks-rust/blob/4287c2aab8f1826446b68888f58462b4342a0a53/crates/shadowsocks-service/src/local/tun/tcp.rs#L67</a></p>
+<p>拦截流量后查找connection，找到就将 dest 改为 tcp_daddr，这样我们不再需要自己的userspace tcp/ip stack，而是复用OS自身的网络栈。<br>
+<a target="_blank" rel="noopener" href="https://github.com/shadowsocks/shadowsocks-rust/blob/4287c2aab8f1826446b68888f58462b4342a0a53/crates/shadowsocks-service/src/local/tun/tcp.rs#L155">https://github.com/shadowsocks/shadowsocks-rust/blob/4287c2aab8f1826446b68888f58462b4342a0a53/crates/shadowsocks-service/src/local/tun/tcp.rs#L155</a></p>
+<h2 id="直接从Ip-packet构建TcpListener">直接从Ip packet构建TcpListener</h2>
+<p>leaf使用自己修改的lwip，从ip packet直接封装出 TcpListener，这里的难点是，TcpListener往往dest port是自身，而无法获取真正的 dest port，另外TcpServer只能收到bind的端口的请求。</p>
+<p>leaf修改lwip代码后，使得任意端口的流量都会流经TcpListener</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/willdeeper/leaf/blob/84f37a9cc348be2a2661a7f236a7628290835ddb/leaf/src/proxy/tun/netstack/tcp_listener_impl.rs#L57">https://github.com/willdeeper/leaf/blob/84f37a9cc348be2a2661a7f236a7628290835ddb/leaf/src/proxy/tun/netstack/tcp_listener_impl.rs#L57</a></p>
+<p>现在clash和其他很多项目都用到leaf作者封装的lwip，开发出来的go-tun2socks</p>
+<p>leaf也有nat，但只给UDP用到，主要是fake by ip<br>
+<a target="_blank" rel="noopener" href="https://github.com/willdeeper/leaf/blob/84f37a9cc348be2a2661a7f236a7628290835ddb/leaf/src/proxy/tun/netstack/stack_impl.rs#L268">https://github.com/willdeeper/leaf/blob/84f37a9cc348be2a2661a7f236a7628290835ddb/leaf/src/proxy/tun/netstack/stack_impl.rs#L268</a></p>
+<p>为什么leaf只有UDP用到nat_manager.rs？</p>
+<p>应该只是觉着没必要罢了，修改的 lwip 已经能对 TcpListener 提供很好的支持，所以只对UDP做了 fake by ip，用到nat。这有区别上面说的 `NAT，转发到 socks server，leaf 不依赖 OS 自己的 tcp/ip 重组报文，也就不需要维护 session 来进行 NAT</p>
+<h2 id="如何避免重新读出刚写入tun设备的数据包">如何避免重新读出刚写入tun设备的数据包</h2>
+<blockquote>
+<p>请问，如果自己设置默认路由全部流量都发到tun设备，自己read出来后交给userspace网络栈处理，再将处理后的数据包写入tun，之后的read会不会重新read出来自己刚写入的包呢？</p>
+<p>我理解会，内核根据默认路由会重新送给tun，但那样死循环了呀</p>
+<p>我看这些利用tun的transparent proxy从未遇到过这问题，就好奇是什么原理</p>
+</blockquote>
+<p>seeker有这句话</p>
+<blockquote>
+<p>== 指定 IP 或某网段走代理<br>
+修改路由表，将希望走代理的 IP 或者网段路由到虚拟网卡。如果使用了本机 socks5 代理，则必须确保 socks5 不会直连加入路由表的网段，否则会死循环。</p>
+</blockquote>
+<p>设置默认路由后绝大多数流量都会到tun，为了防止自己刚写到tun包的走默认路由又回来，需要再设置条更短的路由表，发包的ip dest 用这个ip网段，这样就不会再回来。</p>
+<hr>
+<blockquote>
+<p>Active Routes:</p>
+<p>Network Destination        Netmask          Gateway       Interface  Metric</p>
+<pre><code>     0.0.0.0          0.0.0.0      192.168.3.1     192.168.3.21     25
+     0.0.0.0          0.0.0.0         On-link        198.18.0.1      0
+   127.0.0.0        255.0.0.0         On-link         127.0.0.1    331
+  198.18.0.0      255.255.0.0         On-link        198.18.0.1
+</code></pre>
+</blockquote>
+<p>clash为默认网关，clash使用wireguard，在windows上使用 SO_UNICAST_IP 绑定 outgoing 网卡流量。不会再走routing decision</p>
+<p>透明代理的tcp listener都是寄生在lwip之上，从tun设备收到数据写入userspace stack，自己的socks代理直接从lwip处理后的数据里就能解析出socket，leaf就这么做的。</p>
+<p>net stack写入tun</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/willdeeper/leaf/blob/0dff09c9bb652c53e197066af863a6f6a083ecff/leaf/src/proxy/tun/inbound.rs#L113">https://github.com/willdeeper/leaf/blob/0dff09c9bb652c53e197066af863a6f6a083ecff/leaf/src/proxy/tun/inbound.rs#L113</a></p>
+<p>tun写入 net stack<br>
+<a target="_blank" rel="noopener" href="https://github.com/mellow-io/go-tun2socks/blob/6289c4be8d7c2915a73ba0d303d71a3a135e1574/cmd/tun2socks/main.go#L199">https://github.com/mellow-io/go-tun2socks/blob/6289c4be8d7c2915a73ba0d303d71a3a135e1574/cmd/tun2socks/main.go#L199</a></p>
+<p><a target="_blank" rel="noopener" href="https://github.com/mellow-io/mellow/blob/f71f6e54768ded3cfcc46bebb706d46cb8baac08/src/helper/linux/config_route#L1">https://github.com/mellow-io/mellow/blob/f71f6e54768ded3cfcc46bebb706d46cb8baac08/src/helper/linux/config_route#L1</a></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># ip</span></span><br><span class="line">CMD=<span class="variable">$1</span></span><br><span class="line"><span class="comment"># tun gateway</span></span><br><span class="line">TUN_GW=<span class="variable">$2</span></span><br><span class="line"><span class="comment"># 原来的默认网关</span></span><br><span class="line">ORIG_GW=<span class="variable">$3</span></span><br><span class="line"><span class="comment"># 原来的默认网关发给的接口</span></span><br><span class="line"><span class="comment"># https://github.com/mellow-io/mellow/blob/f71f6e54768ded3cfcc46bebb706d46cb8baac08/src/main.js#L866</span></span><br><span class="line">ORIG_GW_SCOPE=<span class="variable">$4</span></span><br><span class="line"><span class="comment"># send through 策略路由</span></span><br><span class="line"><span class="comment"># https://man7.org/linux/man-pages/man8/ip-rule.8.html</span></span><br><span class="line"><span class="comment"># https://github.com/mellow-io/mellow/blob/f71f6e54768ded3cfcc46bebb706d46cb8baac08/src/main.js#L719</span></span><br><span class="line">ORIG_ST=<span class="variable">$5</span></span><br><span class="line"></span><br><span class="line"><span class="string">&quot;<span class="variable">$CMD</span>&quot;</span> route del default table main</span><br><span class="line"><span class="comment"># 注意，这加到了 main table，是OS默认使用的路由表</span></span><br><span class="line"><span class="string">&quot;<span class="variable">$CMD</span>&quot;</span> route add default via <span class="variable">$TUN_GW</span> table main</span><br><span class="line"><span class="comment"># 注意，这里加到default table，default table是默认路由表，main路由表未匹配到会使用default</span></span><br><span class="line"><span class="string">&quot;<span class="variable">$CMD</span>&quot;</span> route add default via <span class="variable">$ORIG_GW</span> dev <span class="variable">$ORIG_GW_SCOPE</span> table default</span><br><span class="line"><span class="comment"># 策略路由，从原来的default interface 接口来的ip数据包转发到default表，这样就能送出去流量，不会成环了</span></span><br><span class="line"><span class="string">&quot;<span class="variable">$CMD</span>&quot;</span> rule add from <span class="variable">$ORIG_ST</span> table default</span><br></pre></td></tr></table></figure>
+<p><s>看来 wireguard 写入 tun 后并不会出现routing loop，SO_NOTOIF opt 确保不会重新读出刚才写入的数据包<br>
+<a target="_blank" rel="noopener" href="https://www.wireguard.com/netns/">https://www.wireguard.com/netns/</a></s></p>
+<p>wireguard 之前想添加 <code>SO_NOTOIF</code> 来避免routing loop，<a target="_blank" rel="noopener" href="https://lists.openwall.net/netdev/2016/02/02/222">https://lists.openwall.net/netdev/2016/02/02/222</a><br>
+但看来维护者认为 ip rule 就够用，不应该在内核做太多magic的功能（直接不走路由）。最后不了了之</p>
+<p>wireguard实现<br>
+<a target="_blank" rel="noopener" href="https://github.com/WireGuard/wireguard-go">https://github.com/WireGuard/wireguard-go</a></p>
+<p><a target="_blank" rel="noopener" href="https://github.com/mellow-io/mellow/issues/310">https://github.com/mellow-io/mellow/issues/310</a></p>
+<p><a target="_blank" rel="noopener" href="http://www.policyrouting.org/iproute2.doc.html#ss9.6">http://www.policyrouting.org/iproute2.doc.html#ss9.6</a></p>
+<h2 id="防止routing-loop的方式">防止routing loop的方式</h2>
+<h3 id="为需要直连的ip设置单独的路由-删除掉默认路由">为需要直连的ip设置单独的路由(删除掉默认路由)</h3>
+<blockquote>
+<p>同学，我又来了[无辜笑]。我看seal的全局模式可以转发整个系统的流量，最近自己在搞一个类似的透明代理工具，有个问题想请教下</p>
+<p>如果自己设置默认路由全部流量都发到tun设备，自己read出来后交给userspace网络栈处理，再将处理后的数据包写入tun，之后的read会不会重新read出来自己刚写入的包呢<br>
+⁣<br>
+⁣我理解会，内核根据默认路由会重新送给tun，但那样死循环了呀<br>
+⁣<br>
+⁣但我看seal的全局模式transparent proxy从未遇到过这问题，这是怎么做到的呢</p>
+<p>回复： read出来不会直接写入tun，是重新封包发给VPN server</p>
+<p>vpn server是单独加了一条路由，而且发送包不是直接写tun包，是直接通过tcp/udp发出，socket可以绑定指定网卡发送</p>
+</blockquote>
+<blockquote>
+<p>ip route del default<br>
+ip route add default dev wg0<br>
+ip route add 163.172.161.0/32 via 192.168.1.1 dev eth0<br>
+<a target="_blank" rel="noopener" href="https://www.wireguard.com/netns/#routing-all-your-traffic">The Classic Solutions</a></p>
+</blockquote>
+<h3 id="为直连ip设置单独路由（不删除默认路由，只覆盖）">为直连ip设置单独路由（不删除默认路由，只覆盖）</h3>
+<p>默认路由的作用是没有匹配到时走default，通过设置 <code>0.0.0.0/1</code>，让这条路由总是先于 default 命中。<br>
+再对要直连的 ip（这里是 163.172.161.0） 设置单独的路由，不需要删除原来的默认路由</p>
+<blockquote>
+<p>ip route add 0.0.0.0/1 dev wg0<br>
+ip route add 128.0.0.0/1 dev wg0<br>
+ip route add 163.172.161.0/32 via 192.168.1.1 dev eth0</p>
+</blockquote>
+<p>这种也叫做 <code>0/1 128/1 trick</code>。</p>
+<p>但这trick有局限<a target="_blank" rel="noopener" href="https://lists.openwall.net/netdev/2016/02/02/222">搜0/1</a></p>
+<p>推荐阅读</p>
+<p><a target="_blank" rel="noopener" href="https://www.wireguard.com/netns/#routing-all-your-traffic">Overriding The Default Route</a></p>
+<h3 id="iptables">iptables</h3>
+<h4 id="iptables-REDIRECT">iptables REDIRECT</h4>
+<p><a target="_blank" rel="noopener" href="https://github.com/iamwwc/ooproxy">https://github.com/iamwwc/ooproxy</a></p>
+<h4 id="iptables-TPROXY">iptables TPROXY</h4>
+<h4 id="iptables-with-fwmark">iptables with fwmark</h4>
+<p>iptables 配合 fwmark。<br>
+<a target="_blank" rel="noopener" href="https://flylib.com/books/en/2.783.1.50/1/">https://flylib.com/books/en/2.783.1.50/1/</a></p>
+<h3 id="策略路由-ip-rule-with-fwmark">策略路由 (ip rule with fwmark)</h3>
+<h4 id="使用-ip-rule-排除掉某个网卡流量">使用 ip rule 排除掉某个网卡流量</h4>
+<p>Rule-based Routing <a target="_blank" rel="noopener" href="https://www.wireguard.com/netns/#routing-all-your-traffic">https://www.wireguard.com/netns/#routing-all-your-traffic</a></p>
+<p>ip rule <a target="_blank" rel="noopener" href="https://man7.org/linux/man-pages/man8/ip-rule.8.html">https://man7.org/linux/man-pages/man8/ip-rule.8.html</a></p>
+<p><a target="_blank" rel="noopener" href="https://www.reddit.com/r/WireGuard/comments/m8jwnt/i_dont_understand_how_wgquick_adds_routes/grkomnp?utm_source=share&amp;utm_medium=web2x&amp;context=3">https://www.reddit.com/r/WireGuard/comments/m8jwnt/i_dont_understand_how_wgquick_adds_routes/grkomnp?utm_source=share&amp;utm_medium=web2x&amp;context=3</a></p>
+<h4 id="或者-rule-还有更强大的终止routing-decision">或者 rule 还有更强大的终止routing decision</h4>
+<p>这方法没用过，但看着能行</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/tailscale/tailscale/issues/144">https://github.com/tailscale/tailscale/issues/144</a></p>
+<h3 id="namespace-solution">namespace solution</h3>
+<p><a target="_blank" rel="noopener" href="https://superuser.com/questions/1664065/tun-device-how-to-avoid-routing-dead-loop-when-write-a-transparent-proxy">https://superuser.com/questions/1664065/tun-device-how-to-avoid-routing-dead-loop-when-write-a-transparent-proxy</a></p>
+<p><a target="_blank" rel="noopener" href="https://www.wireguard.com/netns/#routing-all-your-traffic">The New Namespace Solution</a></p>
+<h3 id="bind-before-connect">bind before connect</h3>
+<p>bind之后connect，routing 不会起作用，这样就能解决设置默认网关后导致的 routing loop</p>
+<p><em>通过调试 <a target="_blank" rel="noopener" href="https://github.com/willdeeper/leaf">leaf</a>,我已经能够十分确认上面这句话的正确性</em></p>
+<blockquote>
+<p>If I bind an interface before to connect, Does that mean the connect for outgoing traffic will use that interface I bind without follow the routing decision?</p>
+<p>@nuclear yes, if you bind() to an interface before connect()'ing, the connection will go out through that interface. That is the whole point.</p>
+</blockquote>
+<p>listen之前需要bind，决定listen到哪个网卡。<br>
+如果作为client去connect，在调用connect时bind会隐式发生。你也可以主动bind before connect，绕过路由选择，强迫出流量使用某个network interface</p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/a/4297381/7529562">https://stackoverflow.com/a/4297381/7529562</a></p>
+<h3 id="windows-平台">windows 平台</h3>
+<h4 id="IP-UNICAST-IF">IP_UNICAST_IF</h4>
+<p>wireguard也依赖tun device，但这tun和Unix上的tun不太像。</p>
+<p>windows并没有tun的概念，为弥补这空缺，wintun 既是个 windows 内核驱动，也是个userspace tunnel，前者从内核拉取、向内核注入packet，后者将前者的数据包传给 userspace 处理 <a target="_blank" rel="noopener" href="https://git.zx2c4.com/wireguard-windows/about/docs/attacksurface.md#wintun">https://git.zx2c4.com/wireguard-windows/about/docs/attacksurface.md#wintun</a>。</p>
+<p>windows 并没有策略路由，所以通过 bind interface IP_UNICAST_IF 来避免routing loop（从侧面印证了 bind before connect 可以解决routing loop）</p>
+<p>以下三封邮件解释了为什么使用 bind。</p>
+<p><a target="_blank" rel="noopener" href="https://lists.zx2c4.com/pipermail/wireguard/2019-September/004493.html">https://lists.zx2c4.com/pipermail/wireguard/2019-September/004493.html</a><br>
+<a target="_blank" rel="noopener" href="https://lists.zx2c4.com/pipermail/wireguard/2019-September/004541.html">https://lists.zx2c4.com/pipermail/wireguard/2019-September/004541.html</a><br>
+<a target="_blank" rel="noopener" href="https://lists.zx2c4.com/pipermail/wireguard/2019-September/004542.html">https://lists.zx2c4.com/pipermail/wireguard/2019-September/004542.html</a></p>
+<p>其中 <a target="_blank" rel="noopener" href="https://lists.zx2c4.com/pipermail/wireguard/2019-September/004541.html">https://lists.zx2c4.com/pipermail/wireguard/2019-September/004541.html</a> 谈到的 <a target="_blank" rel="noopener" href="https://docs.microsoft.com/en-us/windows/win32/winsock/ipproto-ip-socket-options">IP_UNICAST_IF</a> <a target="_blank" rel="noopener" href="https://docs.microsoft.com/en-us/windows/win32/winsock/ipproto-ipv6-socket-options">IPV6_UNICAST_IF</a> 可理解为指定 outgoing 流量的网络接口。</p>
+<p>而里面说的 WFP 是 <a target="_blank" rel="noopener" href="https://docs.microsoft.com/en-us/windows/win32/fwp/windows-filtering-platform-start-page">Windows Filtering Platform</a>，看起来是 windows 平台内核级别的流量过滤API（类似 iptables）</p>
+<p>windows 没有Linux 的类似 ip rule 这种策略路由。 wireguard-windows 用来 IP_UNICAST_IF 来开发</p>
+<p>下面是 wireguard-go 在 windows 上用 IP_UNICAST_IF 的实现</p>
+<p>wireguard-go IP_UNICAST_IF的实现</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/WireGuard/wireguard-go/blob/5846b622837e04dbc35b153d9ceda7fd66397520/conn/bind_windows.go#L567">https://github.com/WireGuard/wireguard-go/blob/5846b622837e04dbc35b153d9ceda7fd66397520/conn/bind_windows.go#L567</a></p>
+<p>31是windows header里定义的</p>
+<p><a target="_blank" rel="noopener" href="https://www.pinvoke.net/search.aspx?search=IP_UNICAST_IF&amp;namespace=%5BAll">https://www.pinvoke.net/search.aspx?search=IP_UNICAST_IF&amp;namespace=[All</a>]</p>
+<p>此外，wireguard 会帮你自动设置路由，bind 来避免routing loop</p>
+<p><a target="_blank" rel="noopener" href="https://www.reddit.com/r/WireGuard/comments/m8jwnt/i_dont_understand_how_wgquick_adds_routes/">https://www.reddit.com/r/WireGuard/comments/m8jwnt/i_dont_understand_how_wgquick_adds_routes/</a></p>
+<p>wireguard 对自己使用 IP_UNICAST_IF 的解释</p>
+<p><a target="_blank" rel="noopener" href="https://git.zx2c4.com/wireguard-windows/about/docs/netquirk.md">https://git.zx2c4.com/wireguard-windows/about/docs/netquirk.md</a></p>
+<h4 id="VPN-service-直接支持设置绕过VPN的路由">VPN service 直接支持设置绕过VPN的路由</h4>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://docs.microsoft.com/en-us/uwp/api/windows.networking.vpn.vpnrouteassignment.ipv4inclusionroutes?view=winrt-22621">https://docs.microsoft.com/en-us/uwp/api/windows.networking.vpn.vpnrouteassignment.ipv4inclusionroutes?view=winrt-22621</a></p>
+</blockquote>
+<h3 id="Linux-平台">Linux 平台</h3>
+<p>通过 setsockopt syscall 时传递 SO_BINDTODEVICE</p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/4584908/how-do-i-send-udp-packet-from-a-specific-interface-on-linux">https://stackoverflow.com/questions/4584908/how-do-i-send-udp-packet-from-a-specific-interface-on-linux</a></p>
+<p><a target="_blank" rel="noopener" href="https://lore.kernel.org/netdev/1328685717.4736.4.camel@edumazet-laptop/T/">https://lore.kernel.org/netdev/1328685717.4736.4.camel@edumazet-laptop/T/</a></p>
+<p>阅读leaf代码时确认使用过上述选项</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/willdeeper/leaf/blob/0dff09c9bb652c53e197066af863a6f6a083ecff/leaf/src/proxy/mod.rs#L235">https://github.com/willdeeper/leaf/blob/0dff09c9bb652c53e197066af863a6f6a083ecff/leaf/src/proxy/mod.rs#L235</a></p>
+<p><img src="https://user-images.githubusercontent.com/24750337/127586791-76ad6390-d023-481a-af46-765dee5167f7.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>shadowsocks-rust 新添加的 tun mode 也使用了</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">https://github.com/shadowsocks/shadowsocks-rust/blob/4287c2aab8f1826446b68888f58462b4342a0a53/bin/sslocal.rs#L116</span><br><span class="line"></span><br><span class="line">https://github.com/shadowsocks/shadowsocks-rust/pull/586#issuecomment-899196940</span><br></pre></td></tr></table></figure>
+<hr>
+<p>经测试(leaf只bind，不添加 ip rule)，bind SO_BINDTODEVICE 之后再将数据写入socket，数据会直接到达网卡的发送队列，不会再次走routing decision。</p>
+<p>路由选择的核心在于找到一个网卡，并 bind SO_BINDTODEVICE 直接绕过了这一步。</p>
+<p>对于从外界接收数据，</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">user mode tcp/ip stack &lt;=&gt; Application</span><br><span class="line">            ^</span><br><span class="line">            | default routing</span><br><span class="line">outside =&gt; routing decision =&gt; NIC adaptor =&gt; tcp/ip stack behind NIC</span><br><span class="line">                                                                     \</span><br><span class="line">                                                                        Application</span><br><span class="line">        (ARP)                                                             /</span><br><span class="line">outside &lt;= NIC adaptor &lt;= routing decision &lt;= tcp/ip stack behind NIC</span><br><span class="line">            ^</span><br><span class="line">            |bind SO_BINDTODEVICE</span><br><span class="line">user mode tcp/ip stack &lt;=&gt; Application</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>当 leaf 使用bind到默认网卡时，不需要ip rule策略路由。</p>
+<hr>
+<p>即使socks代理在本地，也不会导致routing loop。</p>
+<p>这是因为路由表中 local 表优先级最高，我们修改的是main和default表。</p>
+<p>配置 socks outbound 为其他机器时正常工作，是因为流量到了原始网卡直接发离机器了。</p>
+<p>但如果配置的socks outbound 为本地环路地址会又问题</p>
+<p>例子</p>
+<blockquote>
+<p>本地开clash，listen 7890，leaf配置<code>socks outbound</code> 127.0.0.1:7890<br>
+socket SO_BINDTODEVICE 到 eth0，用这 socket dial to 127.0.0.1:7890<br>
+在vmm8，也就是虚拟机的默认网卡上抓到 ip dst 为 127.0.0.1 的流量，127.0.0.1属于环路地址，不应该在以太网卡上抓到。所以连接失败。</p>
+<p><img src="https://user-images.githubusercontent.com/24750337/127739003-77a92416-6c4f-4213-8659-20cab3255d79.png" alt="" style="max-width: 400px;width: 100%;"></p>
+</blockquote>
+<p>clash这issue <a target="_blank" rel="noopener" href="https://github.com/Dreamacro/clash/issues/135">https://github.com/Dreamacro/clash/issues/135</a> 谈到了bind，listen的问题</p>
+<h3 id="Mac">Mac</h3>
+<h4 id="Network-Extension">Network Extension</h4>
+<p>excludedRoutes</p>
+<p><a target="_blank" rel="noopener" href="https://developer.apple.com/documentation/networkextension/neipv6settings/1406294-excludedroutes">https://developer.apple.com/documentation/networkextension/neipv6settings/1406294-excludedroutes</a></p>
+<p>wireguard 就使用到了 includedRoutes<br>
+<a target="_blank" rel="noopener" href="https://github.com/WireGuard/wireguard-apple/blob/23618f994f17d8ad8f2f65d79b4a1e8a0830b334/Sources/WireGuardKit/PacketTunnelSettingsGenerator.swift#L117">https://github.com/WireGuard/wireguard-apple/blob/23618f994f17d8ad8f2f65d79b4a1e8a0830b334/Sources/WireGuardKit/PacketTunnelSettingsGenerator.swift#L117</a></p>
+<p><a target="_blank" rel="noopener" href="https://www.v2ex.com/t/590555#r_9004049">https://www.v2ex.com/t/590555#r_9004049</a></p>
+<h4 id="设置路由表">设置路由表</h4>
+<h4 id="Android">Android</h4>
+<p><a target="_blank" rel="noopener" href="https://developer.android.com/reference/android/net/VpnService#protect(java.net.Socket">https://developer.android.com/reference/android/net/VpnService#protect(java.net.Socket</a>)</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Protect a socket from VPN connections. After protecting, data sent through this socket will go directly to the underlying network, so its traffic will not be forwarded through the VPN. This method is useful if some connections need to be kept outside of VPN. For example, a VPN tunnel should protect itself if its destination is covered by VPN routes. Otherwise its outgoing packets will be sent back to the VPN interface and cause an infinite loop. This method will fail if the application is not prepared or is revoked.</span><br></pre></td></tr></table></figure>
+<p>每个OS都有自己的特色，Linux下提供 SO_BINDTODEVICE。而Mac，Android则提供高级的API，用于解决routing loop这个问题。核心都是绕过了routing decision这项</p>
+<hr>
+<h2 id="总结">总结</h2>
+<p>每个平台都有特殊的实现方式，</p>
+<p>Linux</p>
+<ul>
+<li>iptables或者配合fwmark: 很多软件</li>
+<li>ip rule: 很多软件</li>
+</ul>
+<p>Mac</p>
+<ul>
+<li>network extension: wireguard-apple</li>
+<li>为出proxy单独设置路由: 经典VPN实现，VPN server往往有公网IP</li>
+</ul>
+<p>Android</p>
+<ul>
+<li>VpnService#protect: shadowsocks-android</li>
+</ul>
+<p>Windows</p>
+<ul>
+<li>IP_UNICAST_IF: wireguard-go</li>
+<li>Windows.Networking.Vpn: <a target="_blank" rel="noopener" href="https://github.com/YtFlow/Maple/blob/884b16616ab69e68f727cbe0db61f2849f6560e2/Maple.Task/VpnPlugin.cpp#L30">Maple</a></li>
+</ul>
+<p>而又有最后相似的，古典的（classic）处理方式：<br>
+为proxy创建单独的route，避免 routing loop. <a target="_blank" rel="noopener" href="https://www.wireguard.com/netns/#the-classic-solutions">https://www.wireguard.com/netns/#the-classic-solutions</a></p>
+<h2 id="参考的开源项目">参考的开源项目</h2>
+<p>C实现的tun2socks<br>
+<a target="_blank" rel="noopener" href="https://github.com/russdill/tunsocks">https://github.com/russdill/tunsocks</a></p>
+<p>Go实现的tun2socks，支持windows<br>
+<a target="_blank" rel="noopener" href="https://github.com/Intika-Linux-Network/Tun-2-Socks">https://github.com/Intika-Linux-Network/Tun-2-Socks</a></p>
+<p>Rust实现的透明代理工具<br>
+<a target="_blank" rel="noopener" href="https://github.com/willdeeper/leaf">https://github.com/willdeeper/leaf</a></p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/14697963/tcp-ip-connection-on-a-specific-interface">https://stackoverflow.com/questions/14697963/tcp-ip-connection-on-a-specific-interface</a></p>
+<p>Tcp connection 使用特定interface送出去流量<br>
+或者使用<strong>策略路由</strong><br>
+<a target="_blank" rel="noopener" href="https://www.reddit.com/r/golang/comments/4x277h/dial_a_tcp_connection_from_a_specific_interface/d6cfr4d?utm_source=share&amp;utm_medium=web2x&amp;context=3">https://www.reddit.com/r/golang/comments/4x277h/dial_a_tcp_connection_from_a_specific_interface/d6cfr4d?utm_source=share&amp;utm_medium=web2x&amp;context=3</a></p>
+<p>还是这张图</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">user mode tcp/ip stack &lt;=&gt; Application</span><br><span class="line">            ^</span><br><span class="line">            | default routing</span><br><span class="line">outside =&gt; routing decision =&gt; NIC adaptor =&gt; tcp/ip stack behind NIC</span><br><span class="line">                                                                     \</span><br><span class="line">                                                                        Application</span><br><span class="line">        (ARP)                                                             /</span><br><span class="line">outside &lt;= NIC adaptor &lt;= routing decision &lt;= tcp/ip stack behind NIC</span><br><span class="line">            ^</span><br><span class="line">            |bind SO_BINDTODEVICE</span><br><span class="line">user mode tcp/ip stack &lt;=&gt; Application</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>通过bind可以将数据送给eth0（Mac地址mac0），现在eth0怎么往下送呢？</p>
+<p>如果ip dest（ip0）是本机另一个网卡 eth1（Mac地址mac1） ，怎么才能送过去呢？</p>
+<p>这就涉及到ARP，写入eth0后，发送ARP确定 ip dest对应的链路层地址</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">who has ip0 tell mac0</span><br><span class="line">ip0 is at mac1</span><br></pre></td></tr></table></figure>
+<p>这时 eth1 告诉 eth0 MAC 地址，然后 eth0 就能送过去了。</p>
+<p>首先确定 dest ip 是否和 src ip 为一个网段</p>
+<ol>
+<li>是一个网段，直接发广播ARP，链路层Target Mac全为0</li>
+<li>不是一个网段，链路层 Target Mac为网关Mac，网关收到数据包后广播再次发Arp，寻找目标地址，找到后发给他</li>
+</ol>
+<p><a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/370507243">https://zhuanlan.zhihu.com/p/370507243</a></p>
+<p><img src="https://user-images.githubusercontent.com/24750337/127967254-038f835a-259d-48d4-97c1-9b5065f8fd5b.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>如果是本地另一个网段的地址呢？</p>
+<p>Windows 的route table 有On-Link，Linux应该也差不多。多个虚拟网卡都在内核注册过，所以内核知道 dest ip 的 Target Mac应该是哪个网卡的Mac，不需要额外发ARP，直接内核中转过去了。</p>
+<p>这也解释了，为什么没有抓到查询另一个本地网卡的ARP请求，也解释了，从一个网卡发出去，并不是一定是发出本地机器，有可能在本地。所以leaf中bind即使是eth0，该去另一个网卡的流量还是会过去。</p>
+<p><a target="_blank" rel="noopener" href="https://superuser.com/a/60104/944262">https://superuser.com/a/60104/944262</a></p>
+<p>我很有必要区分出物理网卡，虚拟网卡。</p>
+<p>物理网卡负责将数据从网线送出去，并没有ip地址的概念，因为不同的笔记本IP是可自由配置的，所以无法给物理网卡固定的ip。</p>
+<p>但物理网卡是有Mac地址的。</p>
+<p>附录</p>
+<p>wireguard 架构<br>
+<a target="_blank" rel="noopener" href="https://github.com/WireGuard/wireguard-rs">https://github.com/WireGuard/wireguard-rs</a></p>
+<p>wireguard white paper 搜 routing loop</p>
+<p><a target="_blank" rel="noopener" href="https://www.wireguard.com/papers/wireguard.pdf">https://www.wireguard.com/papers/wireguard.pdf</a></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/net/" rel="tag"># net</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/07/01/56/" rel="prev" title="Rust生命周期">
+      <i class="fa fa-chevron-left"></i> Rust生命周期
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/05/24/58/" rel="next" title="shadowsocks 协议分析及密码学基础">
+      shadowsocks 协议分析及密码学基础 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#NAT%EF%BC%8C-%E8%BD%AC%E5%8F%91%E5%88%B0socks-server"><span class="nav-number">1.</span> <span class="nav-text">NAT， 转发到socks server</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B4%E6%8E%A5%E4%BB%8EIp-packet%E6%9E%84%E5%BB%BATcpListener"><span class="nav-number">2.</span> <span class="nav-text">直接从Ip packet构建TcpListener</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E9%87%8D%E6%96%B0%E8%AF%BB%E5%87%BA%E5%88%9A%E5%86%99%E5%85%A5tun%E8%AE%BE%E5%A4%87%E7%9A%84%E6%95%B0%E6%8D%AE%E5%8C%85"><span class="nav-number">3.</span> <span class="nav-text">如何避免重新读出刚写入tun设备的数据包</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%B2%E6%AD%A2routing-loop%E7%9A%84%E6%96%B9%E5%BC%8F"><span class="nav-number">4.</span> <span class="nav-text">防止routing loop的方式</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E9%9C%80%E8%A6%81%E7%9B%B4%E8%BF%9E%E7%9A%84ip%E8%AE%BE%E7%BD%AE%E5%8D%95%E7%8B%AC%E7%9A%84%E8%B7%AF%E7%94%B1-%E5%88%A0%E9%99%A4%E6%8E%89%E9%BB%98%E8%AE%A4%E8%B7%AF%E7%94%B1"><span class="nav-number">4.1.</span> <span class="nav-text">为需要直连的ip设置单独的路由(删除掉默认路由)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E7%9B%B4%E8%BF%9Eip%E8%AE%BE%E7%BD%AE%E5%8D%95%E7%8B%AC%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%8D%E5%88%A0%E9%99%A4%E9%BB%98%E8%AE%A4%E8%B7%AF%E7%94%B1%EF%BC%8C%E5%8F%AA%E8%A6%86%E7%9B%96%EF%BC%89"><span class="nav-number">4.2.</span> <span class="nav-text">为直连ip设置单独路由（不删除默认路由，只覆盖）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#iptables"><span class="nav-number">4.3.</span> <span class="nav-text">iptables</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#iptables-REDIRECT"><span class="nav-number">4.3.1.</span> <span class="nav-text">iptables REDIRECT</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#iptables-TPROXY"><span class="nav-number">4.3.2.</span> <span class="nav-text">iptables TPROXY</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#iptables-with-fwmark"><span class="nav-number">4.3.3.</span> <span class="nav-text">iptables with fwmark</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%AD%96%E7%95%A5%E8%B7%AF%E7%94%B1-ip-rule-with-fwmark"><span class="nav-number">4.4.</span> <span class="nav-text">策略路由 (ip rule with fwmark)</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8-ip-rule-%E6%8E%92%E9%99%A4%E6%8E%89%E6%9F%90%E4%B8%AA%E7%BD%91%E5%8D%A1%E6%B5%81%E9%87%8F"><span class="nav-number">4.4.1.</span> <span class="nav-text">使用 ip rule 排除掉某个网卡流量</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%88%96%E8%80%85-rule-%E8%BF%98%E6%9C%89%E6%9B%B4%E5%BC%BA%E5%A4%A7%E7%9A%84%E7%BB%88%E6%AD%A2routing-decision"><span class="nav-number">4.4.2.</span> <span class="nav-text">或者 rule 还有更强大的终止routing decision</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#namespace-solution"><span class="nav-number">4.5.</span> <span class="nav-text">namespace solution</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#bind-before-connect"><span class="nav-number">4.6.</span> <span class="nav-text">bind before connect</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#windows-%E5%B9%B3%E5%8F%B0"><span class="nav-number">4.7.</span> <span class="nav-text">windows 平台</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#IP-UNICAST-IF"><span class="nav-number">4.7.1.</span> <span class="nav-text">IP_UNICAST_IF</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#VPN-service-%E7%9B%B4%E6%8E%A5%E6%94%AF%E6%8C%81%E8%AE%BE%E7%BD%AE%E7%BB%95%E8%BF%87VPN%E7%9A%84%E8%B7%AF%E7%94%B1"><span class="nav-number">4.7.2.</span> <span class="nav-text">VPN service 直接支持设置绕过VPN的路由</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Linux-%E5%B9%B3%E5%8F%B0"><span class="nav-number">4.8.</span> <span class="nav-text">Linux 平台</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Mac"><span class="nav-number">4.9.</span> <span class="nav-text">Mac</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Network-Extension"><span class="nav-number">4.9.1.</span> <span class="nav-text">Network Extension</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%AE%BE%E7%BD%AE%E8%B7%AF%E7%94%B1%E8%A1%A8"><span class="nav-number">4.9.2.</span> <span class="nav-text">设置路由表</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Android"><span class="nav-number">4.9.3.</span> <span class="nav-text">Android</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">5.</span> <span class="nav-text">总结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E7%9A%84%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE"><span class="nav-number">6.</span> <span class="nav-text">参考的开源项目</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

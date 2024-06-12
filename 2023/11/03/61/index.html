@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="WI-FI 如何传输数据 无线通讯通过电磁波完成，发送端通过电流转换成电磁场，电磁场产生无线电波在空间中传递。利用这现象，将信息调制到无线电波上发送。计算机领域中，信息就是 0&#x2F;1，通过电磁波的带宽表示（也可以用电磁波其他的概念组合表示，不一定是是带宽） 接收端利用电磁感应原理，通过解调还原成最初的数据，所以 WI-FI 设备都带天线，天线  数据在传输中，发送器会在天线上施加电流，施加的时变电压">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Kernel-Net">
+<meta property="og:url" content="http://www.chaochaogege.com/2023/11/03/61/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="WI-FI 如何传输数据 无线通讯通过电磁波完成，发送端通过电流转换成电磁场，电磁场产生无线电波在空间中传递。利用这现象，将信息调制到无线电波上发送。计算机领域中，信息就是 0&#x2F;1，通过电磁波的带宽表示（也可以用电磁波其他的概念组合表示，不一定是是带宽） 接收端利用电磁感应原理，通过解调还原成最初的数据，所以 WI-FI 设备都带天线，天线  数据在传输中，发送器会在天线上施加电流，施加的时变电压">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-30-1.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-12-11-28-41.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-12-11-27-04.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-13-36.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-14-13-45-03.png">
+<meta property="og:image" content="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/MMU_and_IOMMU.svg/1920px-MMU_and_IOMMU.svg.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/h616.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-15-09.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-32-23.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-14-59.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-14-23.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-14-47.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-20-14-39-55.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-20-14-47-30.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-20-14-43-21.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-20-15-23-35.png">
+<meta property="article:published_time" content="2023-11-03T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-11-03T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="Kernel">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://www.chaochaogege.com/assets/2023-10-30-1.png">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2023/11/03/61/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Kernel-Net | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2023/11/03/61/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Kernel-Net
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-11-03 00:00:00" itemprop="dateCreated datePublished" datetime="2023-11-03T00:00:00+00:00">2023-11-03</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="WI-FI-如何传输数据">WI-FI 如何传输数据</h2>
+<p>无线通讯通过电磁波完成，发送端通过电流转换成电磁场，电磁场产生无线电波在空间中传递。利用这现象，将信息调制到无线电波上发送。计算机领域中，信息就是 0/1，通过电磁波的带宽表示（也可以用电磁波其他的概念组合表示，不一定是是带宽）</p>
+<p>接收端利用电磁感应原理，通过解调还原成最初的数据，所以 WI-FI 设备都带天线，<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%A4%A9%E7%BA%BF">天线</a></p>
+<blockquote>
+<p>数据在传输中，发送器会在天线上施加电流，施加的时变电压或时变电流而产生辐射的电磁场，使得电流的能量转变成无线电波。在接收时，天线会由于电场的感应，而在天线内部产生时变电流，并在其终端产生时变电压，产生电讯号经过处理之后，可以在接收器中观察或收听。天线被广泛应用于广播、点对点无线电通讯、雷达和太空探索等通讯系统。天线是无线电通讯系统中的必需组件。</p>
+</blockquote>
+<p>维基百科对无线电通讯有个大体介绍</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E6%97%A0%E7%BA%BF%E7%94%B5">无线电 - 维基百科，自由的百科全书</a></p>
+</blockquote>
+<h3 id="调制解调">调制解调</h3>
+<p>WI-FI通过电磁波发送数据，不同的WI-FI版本，a/b/ax/n就是在研究如何调制解调，如何将收到的无线电波解码成多个原始电波</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://zh.wikipedia.org/zh-hans/%E8%AA%BF%E8%AE%8A">调变 - 维基百科，自由的百科全书</a><br>
+<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Orthogonal_frequency-division_multiplexing">正交频划分多路复用</a><br>
+<img src="/assets/2023-10-30-1.png" alt="" style="max-width: 400px;width: 100%;"></p>
+</blockquote>
+<h2 id="device-driver-和-firmware-区别">device driver 和 firmware 区别</h2>
+<p>设备驱动运行在软件层面，OS 级别。驱动是内核相关，不同的内核由于有不同的架构，所以驱动要单独开发</p>
+<p>固件运行在具体的外部硬件上，有独立的板载 CPU/RAM/闪存。负责执行 OS 驱动通过 PCIE/GPIO 传递过来的指令，转换为电路表示。由于固件绑定在硬件，所以固件只有一套，始终跟随此硬件，不像驱动，不同的 OS 有多套</p>
+<p><a target="_blank" rel="noopener" href="https://superuser.com/questions/1758062/why-do-firmware-and-drivers-have-to-be-separate/1758177#1758177">Why do firmware and drivers have to be separate? - Super User</a></p>
+<p>不是全部的硬件都有固件，有些硬件逻辑很简单，完全是电路表达，所以不需要固件。一些复杂硬件，比如无线网卡才会单独设计固件，加上微控制器（类似 CPU）执行加减乘除，数据 mov 指令。</p>
+<p>固件和硬件绑定，并不会独立向外提供，大多数固件都是闭源的。固件代码需要运行到微控制器，编译器要将代码编译到适合的架构上，比如 ARM/X86，如果微控制器是新的架构，编译器不支持，又需要为编译器支持新的后端</p>
+<p>再额外说一句，主板总线可以连接 CPU，RAM，网卡，还有一种工艺是将这些设备都封装进类似 CPU 那种芯片中，被称为 Soc(System on chip)</p>
+<blockquote>
+<p>SoCs are in contrast to the common traditional motherboard-based PC architecture, which <strong>separates components based on function and connects them through a central interfacing circuit board</strong>. Whereas a motherboard houses and connects detachable or replaceable components, SoCs integrate all of these components into a single integrated circuit.<strong>An SoC will typically integrate a CPU, graphics and memory interfaces,[nb 2] secondary storage and USB connectivity, I/O interfaces on a single chip</strong>, whereas a motherboard would connect these modules as discrete components or expansion cards.</p>
+<p>An <strong>SoC integrates a microcontroller, microprocessor or perhaps several processor cores with peripherals like a GPU, Wi-Fi and cellular network radio modems, and/or one or more coprocessors</strong>. Similar to how a microcontroller integrates a microprocessor with peripheral circuits and memory, an SoC can be seen as integrating a microcontroller with even more advanced peripherals. For an overview of integrating system components, see system integration.</p>
+</blockquote>
+<p>固件也可以从文件系统加载：驱动程序通过 <code>request_firmware</code>向 kernel 找到所需固件后，再传递给硬件。可以做到对固件的 patch</p>
+<p>所以 kernel 要控制硬件，光有 driver 不够，还需要对应的固件程序</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://wiki.gentoo.org/wiki/Linux_firmware#cite_note-2:~:text=Additionally%2C%20modern%20Intel%20Wi%2DFi%20chipsets%20almost%20always%20require%20blobs.%5B2%5D">https://wiki.gentoo.org/wiki/Linux_firmware#cite_note-2:~:text=Additionally%2C modern Intel Wi-Fi chipsets almost always require blobs.[2]</a></p>
+</blockquote>
+<h2 id="总线接口">总线接口</h2>
+<p>计算机就是个电路，如何将不同的硬件连接到一起涉及到总线和接口</p>
+<p>PCIe 属于内部总线接口/架构，通过 PCIE 接口，外部硬件可以直连 CPU，提升了性能。<br>
+<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Bus_(computing)#Examples_of_internal_computer_buses">https://en.wikipedia.org/wiki/Bus_(computing)#Examples_of_internal_computer_buses</a></p>
+<p>USB 是外部接口，连接计算机外的硬件<br>
+<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Bus_(computing)#Examples_of_external_computer_buses">https://en.wikipedia.org/wiki/Bus_(computing)#Examples_of_external_computer_buses</a></p>
+<blockquote>
+<p>当然，这些不过是架构/接口类型，核心在传递数据，主板增加 USB 接口也不是做不到</p>
+</blockquote>
+<p><a target="_blank" rel="noopener" href="https://openwrt.org/docs/guide-user/network/wifi/wireless.overview">https://openwrt.org/docs/guide-user/network/wifi/wireless.overview</a><br>
+<a target="_blank" rel="noopener" href="https://github.com/torvalds/linux/blob/master/drivers/net/wireless/realtek/rtl818x/rtl8180/dev.c">https://github.com/torvalds/linux/blob/master/drivers/net/wireless/realtek/rtl818x/rtl8180/dev.c</a></p>
+<p>请问下 linux 下的无线网卡驱动开发? - 纸飞机的回答 - 知乎<br>
+<a target="_blank" rel="noopener" href="https://www.zhihu.com/question/31878199/answer/1261285892">https://www.zhihu.com/question/31878199/answer/1261285892</a></p>
+<p>一个简单的内核 wireless 驱动<br>
+<a target="_blank" rel="noopener" href="https://github.com/sysprog21/vwifi">https://github.com/sysprog21/vwifi</a></p>
+<p>传统主板结构：分南北桥</p>
+<p><img src="/assets/2023-10-12-11-28-41.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>上图可以看到，内存在北桥直接和CPU连接，而外部硬件设备则在南桥，通过PCIE/ISA等总线控制器与CPU间接互联</p>
+<p>SOC总线结构将大多数功能都集成在一块芯片，所以 SOC 主板大多数都直连芯片</p>
+<p><img src="/assets/2023-10-12-11-27-04.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p>软件依赖硬件，看明白总线结构，也就明白了很多软件的概念</p>
+</blockquote>
+<h2 id="中断">中断</h2>
+<p>内核是软硬件交互的接口，驱动需要响应硬件中断。</p>
+<p>之前理解外部设备发送中断需要有单独的中断 pin 脚，挂载到总线中断 pin 才能将中断发送给 CPU。局限是 CPU 的 pin 脚数量是固定的，能发起的中断号数量也固定，不能无限制分配。为了支持更多的中断，总线就需要更多的 pin 用于中断。有些设备还需要共享同一个中断，中断触发后驱动轮巡共享中断的设备，设备都去检查自身的状态看中断是不是属于自己的。如果用不了这么多中断号，那多余的 pin 就是浪费。</p>
+<p>使用 PCI-E 总线结构的硬件设备支持 MSI，不需要 pin 脚。中断发生后，硬件设备将中断号写入中断控制器的中断寄存器，或者其他 MMIO 的地址。中断控制器再将中断信息通过内存送到 CPU</p>
+<p><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Message_Signaled_Interrupts#Overview">https://en.wikipedia.org/wiki/Message_Signaled_Interrupts#Overview</a></p>
+<p>开发驱动需要向内核申请中断号并注册中断回调</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">retval = request_irq(priv-&gt;pdev-&gt;irq, adm8211_interrupt,</span><br><span class="line">        IRQF_SHARED, <span class="string">&quot;adm8211&quot;</span>, dev);</span><br></pre></td></tr></table></figure>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/a/6246352/7529562">Difference between request_irq and __interrupt</a></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 向内核申请中断号</span></span><br><span class="line">platform_get_irq(..)</span><br><span class="line">platform_get_irq_optional(..)</span><br><span class="line"><span class="comment">// 注册中断回调</span></span><br><span class="line">request_threaded_irq(..)</span><br><span class="line"><span class="comment">// this function takes the</span></span><br><span class="line"><span class="comment">// same arguments and performs the same function as</span></span><br><span class="line"><span class="comment">// request_threaded_irq().  IRQs requested with this function will be</span></span><br><span class="line"><span class="comment">// automatically freed on driver detach.</span></span><br><span class="line">devm_request_threaded_irq(..)</span><br></pre></td></tr></table></figure>
+<p>并不是每个驱动都要先申请中断号，有些硬件会写死中断号，驱动直接注册中断回调</p>
+<h2 id="驱动如何作为内核模块被加载">驱动如何作为内核模块被加载</h2>
+<p>内核提供 kernel module 来扩展内核能力，驱动大多数是以 module 来开发，下面分析下 driver module 如何注册到内核</p>
+<p>经典的 kernel module 注册使用<br>
+内核调用 init 初始化内核模块</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/module.h&gt;</span></span></span><br><span class="line">module_init(..)</span><br><span class="line">module_exit(..)</span><br></pre></td></tr></table></figure>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/platform_device.h&gt;</span></span></span><br><span class="line">module_platform_driver(..)</span><br><span class="line"><span class="comment">// or</span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/pci.h&gt;</span></span></span><br><span class="line">module_pci_driver(..)</span><br></pre></td></tr></table></figure>
+<p>驱动类型不同，注册的方式也不同，但内部都调用<code>module_driver(__pci_driver, pci_register_driver, pci_unregister_driver)</code>宏</p>
+<p>驱动懒加载运行。硬件设备插入内核后，驱动代码才会运行，所以 driver module 将 module_init 导向内核驱动 register 函数</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// https://github.com/torvalds/linux/blob/63b823d7d3cd275c3347233f95bdf966a595dbc8/drivers/base/driver.c#L222</span></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * driver_register - register driver with bus</span></span><br><span class="line"><span class="comment"> * @drv: driver to register</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * We pass off most of the work to the bus_add_driver() call,</span></span><br><span class="line"><span class="comment"> * since most of the things we have to do deal with the bus</span></span><br><span class="line"><span class="comment"> * structures.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">driver_register</span><span class="params">(<span class="keyword">struct</span> device_driver *drv)</span>&#123;</span><br><span class="line">    <span class="comment">//...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="驱动加载流程">驱动加载流程</h2>
+<h3 id="PCI-e-总线结构为例">PCI-e 总线结构为例</h3>
+<p>硬件插入 PCI-E 总线后内核遍历 PCIE slot，读取设备信息，包含硬件 name，vendor，想使用的中断号</p>
+<p>从 PCIE controller 读取插在 pcie slot 上的设备的代码调用栈</p>
+<p><img src="/assets/2023-10-10-15-13-36.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<figure class="highlight txt"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://github.com/torvalds/linux/blob/69c42d493db452ea87c1ac56e83c978512f4e6ec/arch/x86/pci/direct.c#L21-L50</span><br></pre></td></tr></table></figure>
+<p><a target="_blank" rel="noopener" href="https://www.intel.com/content/www/us/en/docs/programmable/683667/21-1/pci-configuration-header-registers.html">https://www.intel.com/content/www/us/en/docs/programmable/683667/21-1/pci-configuration-header-registers.html</a><br>
+<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/PCI_configuration_space">https://en.wikipedia.org/wiki/PCI_configuration_space</a><br>
+<a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/18854931/how-does-the-os-detect-hardware">https://stackoverflow.com/questions/18854931/how-does-the-os-detect-hardware</a></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 代码有删减</span></span><br><span class="line"><span class="comment">// https://github.com/torvalds/linux/blob/d0b7b3a422f1f550a1bac9fc3404196c10232d14/drivers/pci/probe.c#L1830</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">pci_setup_device</span><span class="params">(<span class="keyword">struct</span> pci_dev *dev)</span></span><br><span class="line">&#123;</span><br><span class="line"> u32 <span class="class"><span class="keyword">class</span>;</span></span><br><span class="line"> u16 cmd;</span><br><span class="line"> u8 hdr_type;</span><br><span class="line"> <span class="type">int</span> err, pos = <span class="number">0</span>;</span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">pci_bus_region</span> <span class="title">region</span>;</span></span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">resource</span> *<span class="title">res</span>;</span></span><br><span class="line"></span><br><span class="line"> hdr_type = pci_hdr_type(dev);</span><br><span class="line"><span class="comment">// 初始化dev结构，此结构就是驱动加载后的dev</span></span><br><span class="line"> dev-&gt;sysdata = dev-&gt;bus-&gt;sysdata;</span><br><span class="line"> dev-&gt;dev.parent = dev-&gt;bus-&gt;bridge;</span><br><span class="line"> dev-&gt;dev.bus = &amp;pci_bus_type;</span><br><span class="line"> dev-&gt;hdr_type = hdr_type &amp; <span class="number">0x7f</span>;</span><br><span class="line"> dev-&gt;multifunction = !!(hdr_type &amp; <span class="number">0x80</span>);</span><br><span class="line"> dev-&gt;error_state = pci_channel_io_normal;</span><br><span class="line"> set_pcie_port_type(dev);</span><br><span class="line"></span><br><span class="line"> <span class="comment">/*</span></span><br><span class="line"><span class="comment">  * Assume 32-bit PCI; let 64-bit PCI cards (which are far rarer)</span></span><br><span class="line"><span class="comment">  * set this higher, assuming the system even supports it.</span></span><br><span class="line"><span class="comment">  */</span></span><br><span class="line"> dev-&gt;dma_mask = <span class="number">0xffffffff</span>;</span><br><span class="line"></span><br><span class="line"> dev_set_name(&amp;dev-&gt;dev, <span class="string">&quot;%04x:%02x:%02x.%d&quot;</span>, pci_domain_nr(dev-&gt;bus),</span><br><span class="line">       dev-&gt;bus-&gt;number, PCI_SLOT(dev-&gt;devfn),</span><br><span class="line">       PCI_FUNC(dev-&gt;devfn));</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"> <span class="comment">/* Need to have dev-&gt;cfg_size ready */</span></span><br><span class="line"> set_pcie_thunderbolt(dev);</span><br><span class="line"></span><br><span class="line"> set_pcie_untrusted(dev);</span><br><span class="line"></span><br><span class="line"> <span class="comment">/* &quot;Unknown power state&quot; */</span></span><br><span class="line"> dev-&gt;current_state = PCI_UNKNOWN;</span><br><span class="line"></span><br><span class="line"> <span class="comment">/* Early fixups, before probing the BARs */</span></span><br><span class="line"> pci_fixup_device(pci_fixup_early, dev);</span><br><span class="line"></span><br><span class="line"> pci_set_removable(dev);</span><br><span class="line"></span><br><span class="line"> <span class="comment">// 从PCI设备读取硬件中断号</span></span><br><span class="line">  pci_read_irq(dev);</span><br><span class="line">  pci_read_bases(dev, <span class="number">1</span>, <span class="number">0</span>);</span><br><span class="line">  pci_read_config_word(dev, PCI_CB_SUBSYSTEM_VENDOR_ID, &amp;dev-&gt;subsystem_vendor);</span><br><span class="line">  pci_read_config_word(dev, PCI_CB_SUBSYSTEM_ID, &amp;dev-&gt;subsystem_device);</span><br><span class="line"></span><br><span class="line"> <span class="comment">/* We found a fine healthy device, go go go... */</span></span><br><span class="line"> <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>设备信息初始化完成后，依次调用</p>
+<figure class="highlight txt"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pci_device_add</span><br><span class="line">device_add</span><br></pre></td></tr></table></figure>
+<p>最终调用到内核驱动模块的回调</p>
+<h2 id="数据交互的几种方式">数据交互的几种方式</h2>
+<ol>
+<li>通过 pin 脚，pinout 的组合数量决定了能够传输的数据量，此种方式要想增加传输的数据量，就需要加更多的 pin</li>
+<li>pin 高电压保持的时间：较少的 pinout 能传递更多的数据，比如约定 pin 1 保持至少 10ns 的高电压则表示 1。局限：传递速度会慢</li>
+<li>约定数据存放的位置：PCIE 设备会将硬件信息存放到固定的某个地址开始的 256 字节，内核要获取信息只需要读固定位置</li>
+<li>内存传递：少量 pin 脚标识状态，而将更多的数据存放到约定的地址字段</li>
+</ol>
+<h2 id="initcall-kernel-init-初始化过程">initcall - kernel init 初始化过程</h2>
+<p>追踪USB初始化路径时发现 <code>usb_init</code> 并没有显式调用，而是使用宏在 elf 的 <code>.section</code> 新增一条记录</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> __exit <span class="title function_">usb_exit</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">/* This will matter if shutdown/reboot does exitcalls. */</span></span><br><span class="line">    <span class="keyword">if</span> (usb_disabled())</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">    usb_release_quirk_list();</span><br><span class="line">    usb_deregister_device_driver(&amp;usb_generic_driver);</span><br><span class="line">    usb_major_cleanup();</span><br><span class="line">    usb_deregister(&amp;usbfs_driver);</span><br><span class="line">    usb_devio_cleanup();</span><br><span class="line">    usb_hub_cleanup();</span><br><span class="line">    class_unregister(&amp;usbmisc_class);</span><br><span class="line">    bus_unregister_notifier(&amp;usb_bus_type, &amp;usb_bus_nb);</span><br><span class="line">    bus_unregister(&amp;usb_bus_type);</span><br><span class="line">    usb_acpi_unregister();</span><br><span class="line">    usb_debugfs_cleanup();</span><br><span class="line">    idr_destroy(&amp;usb_bus_idr);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">subsys_initcall(usb_init);</span><br></pre></td></tr></table></figure>
+<p>kernel经常会使用 elf 的 <code>.section</code> 进行标记</p>
+<p>usb_exit属于initcall的<code>subsys_initcall</code>，在kernel初始化阶段调用。kernel的module有些会依赖kernel子系统初始化完成，所以 initcall 来得比 <code>module_init</code> 更早</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/15541290/what-is-the-difference-between-module-init-and-subsys-initcall-while-initializin">https://stackoverflow.com/questions/15541290/what-is-the-difference-between-module-init-and-subsys-initcall-while-initializin</a></p>
+</blockquote>
+<p>initcall在booting时调用，而 <code>module_init</code> 在 <code>load_module</code>调用</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Allocate and load the module: note that size of section 0 is always</span></span><br><span class="line"><span class="comment"> * zero, and we rely on this for optional sections.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">load_module</span><span class="params">(<span class="keyword">struct</span> load_info *info, <span class="type">const</span> <span class="type">char</span> __user *uargs,</span></span><br><span class="line"><span class="params">               <span class="type">int</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>kernel 并不是一定从内存<code>0x0000</code>地址加载，以uboot为例，kernel<em>可以</em>从 <code>0x10000000</code>地址启动</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">## Booting kernel from Legacy Image at 02004000 ...</span><br><span class="line">   Image Name:   Linux-4.9.0-xilinx</span><br><span class="line">   Image Type:   ARM Linux Kernel Image (uncompressed)</span><br><span class="line">   Data Size:    4670720 Bytes = 4.5 MiB</span><br><span class="line">   Load Address: 10000000</span><br><span class="line">   Entry Point:  10000000</span><br></pre></td></tr></table></figure>
+<p>elf的地址从0开始，kernel计算 <code>启动地址 + .section initcall相对于0的偏移地址</code> 就可以获得 initcall 的实际地址，从而调用initcall初始化</p>
+<p>netlink initcall 调用栈</p>
+<p><img src="/assets/2023-10-14-13-45-03.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p><a href="/assets/2020_ELCE_initcalls_myjosserand.pdf">initcall</a></p>
+</blockquote>
+<h2 id="虚拟内存与缺页中断（page-fault）">虚拟内存与缺页中断（page fault）</h2>
+<p>Q: 之前有个疑问，CPU执行process代码采用的是绝对地址，本身汇编访存并没有进行虚拟内存到物理内存转换，CPU是如何发现地址不存在的？</p>
+<p>A: 虚拟内存到物理内存的映射不是OS做的，而是CPU内部的内存管理单元（MMU）负责</p>
+<p>MMU在CPU内部，kernel和MMU的交互属于 arch-related</p>
+<p>在linux源码中，<code>linux/arch/*/mm</code>存放kernel不同架构和MMU的交互逻辑</p>
+<p>CPU负责地址映射，需要的地址在页表查不到，会产生 page fault interupt，kernel ISR（interupt service routine）检查缺页中断，将内存页从磁盘复制到内存，将调入的内存块在MMU中建立映射</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Memory_management_unit">https://en.wikipedia.org/wiki/Memory_management_unit</a><br>
+<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Page_table#Page_table_entry">https://en.wikipedia.org/wiki/Page_table#Page_table_entry</a><br>
+<a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/488042885">https://zhuanlan.zhihu.com/p/488042885</a></p>
+<p>构建不需要MMU，进程使用物理地址访问内存的kernel <a target="_blank" rel="noopener" href="https://popovicu.com/posts/789-kb-linux-without-mmu-riscv/">https://popovicu.com/posts/789-kb-linux-without-mmu-riscv/</a></p>
+</blockquote>
+<p>内核和用户进程一样也使用虚拟内存，内核分配函数分配的也是虚拟内存。和用户进程不同的是，内核还控制页表，当内存找不到访问页，kernel负责页换入/换出</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://www.kernel.org/doc/Documentation/DMA-API-HOWTO.txt">https://www.kernel.org/doc/Documentation/DMA-API-HOWTO.txt</a></p>
+<p>The kernel normally uses virtual addresses.  Any address returned by<br>
+kmalloc(), vmalloc(), and similar interfaces is a virtual address and can<br>
+be stored in a <code>void *</code>.</p>
+</blockquote>
+<h2 id="DMA-直接内存访问">DMA(直接内存访问)</h2>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://blakerain.com/blog/allocating-memory-for-dma-in-linux">https://blakerain.com/blog/allocating-memory-for-dma-in-linux</a></p>
+</blockquote>
+<p>IOMMU</p>
+<p><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/MMU_and_IOMMU.svg/1920px-MMU_and_IOMMU.svg.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://www.kernel.org/doc/Documentation/DMA-API-HOWTO.txt">https://www.kernel.org/doc/Documentation/DMA-API-HOWTO.txt</a></p>
+<p>If the device supports DMA, the driver sets up a buffer using kmalloc() or<br>
+a similar interface, which returns a virtual address (X).  The virtual<br>
+memory system maps X to a physical address (Y) in system RAM.  The driver<br>
+can use virtual address X to access the buffer, but the device itself<br>
+cannot because DMA doesn’t go through the CPU virtual memory system.</p>
+<p>In some simple systems, the device can do DMA directly to physical address<br>
+Y.  But in many others, there is IOMMU hardware that translates DMA<br>
+addresses to physical addresses, e.g., it translates Z to Y.  This is part<br>
+of the reason for the DMA API: <strong>the driver can give a virtual address X to<br>
+an interface like dma_map_single(), which sets up any required IOMMU<br>
+mapping and returns the DMA address Z.  The driver then tells the device to<br>
+do DMA to Z, and the IOMMU maps it to the buffer at address Y in system<br>
+RAM.</strong></p>
+</blockquote>
+<p>DMA访问不经过CPU，自然就不会经过CPU内部的MMU。IO设备通过虚拟内存访问内存数据就无法进行，为了解决此问题，在总线上引入了IOMMU，作为MMU的替代负责虚拟内存到物理内存的转换</p>
+<p>在一些架构上，<code>dma_address</code>可以是物理地址，但大多数情况下，都是bus address。设备需要IOMMU进行地址变换，才能访问到真正的RAM DMA地址。注意，bus address不是虚拟地址，可能是其他类型的地址，因为IOMMU负责地址变化，谁知道它怎么映射的呢，没准是任意的地址</p>
+<p>kernel 使用物理地址记录外围设备的io地址，驱动无法使用，它需要 <code>ioremap()</code> 成虚拟地址，变成 <code>memory mapped io address</code></p>
+<p>IOMMU和DMA控制器可以集成在主板，也可以集成到SOC，比如 H616 SOC</p>
+<p><img src="/assets/h616.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>驱动和设备通过DMA descriptors ring buffer通讯。device控制head，driver控制tail</p>
+<p>每个buffer存放指向 data 的指针，device将收到的数据放到data，driver从ring buffer取走(如果是net driver，创建skb_buff push到内核协议栈)，创建新的buffer，加到descriptor ring buffer 的tail</p>
+<p><img src="/assets/2023-10-10-15-15-09.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p><a href="/assets/ixy-writing-user-space-network-drivers.pdf">ixy-writing-user-space-network-drivers</a></p>
+<blockquote>
+<p>其他的userspace driver实现，不一定对齐Linux</p>
+<p>Both receive and transmit rings work in a similar way: the<br>
+driver programs a physical base address and the size of the<br>
+ring. It then fills the memory area with DMA descriptors,<br>
+i.e., pointers to physical addresses where the packet data is<br>
+stored with some metadata. Sending and receiving packets is<br>
+done by passing ownership of the DMA descriptors between<br>
+driver and hardware via a head and a tail pointer. The driver<br>
+controls the tail, the hardware the head. Both pointers are<br>
+stored in device registers accessible via MMIO</p>
+<p>Receiving Packets. The driver fills up the ring buffer<br>
+with physical pointers to packet buffers in start_rx_queue()<br>
+on startup. Each time a packet is received, the correspond-<br>
+ing buffer is returned to the application and we allocate a<br>
+new packet buffer and store its physical address in the DMA<br>
+descriptor and reset the ready flag. We also need a way to<br>
+translate the physical addresses in the DMA descriptor found<br>
+in the ring back to its virtual counterpart on packet reception.<br>
+This is done by keeping a second copy of the ring populated<br>
+with virtual instead of physical addresses, this is then used<br>
+as a lookup table for the translation.</p>
+</blockquote>
+<p>DMA desc ring</p>
+<p><img src="/assets/2023-10-10-15-32-23.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>虽说一直提到DMA ring buffer，但DMA并不一定需要ring buffer。DMA提供双方互相访问的内存。DMA对双方在内存中以何种数据结构进行通讯没有强制要求，你可以用DMA内存实现ring buffer，将DMA address写到硬件。也可以用其他结构。</p>
+<p>ringbuffer好处是容易实现 lockfree list，硬件和驱动分别从头和尾取/放 buffer</p>
+<p>总而言之，DMA只是硬件和驱动直接沟通的媒介，怎么沟通那是两方的事。</p>
+<h2 id="虚拟地址，物理地址，总线地址">虚拟地址，物理地址，总线地址</h2>
+<p>物理地址：CPU物理地址</p>
+<p>总线地址：host bridge的整个地址空间，外围设备的地址（IO地址）都在总线地址上</p>
+<p><img src="/assets/2023-10-10-15-14-59.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>虚拟地址：CPU虚拟地址</p>
+<p>CPU是如何分别访问内存地址和外围设备的IO地址的？</p>
+<p>CPU 有单独的引脚标识此次内存访问是RAM，还是IO地址<br>
+如果引脚高电压，访问的地址是IO地址，否则为RAM地址</p>
+<p>总线控制器负责将访问重定向</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/44237345/how-does-the-cpu-writes-data-to-an-io-port">https://stackoverflow.com/questions/44237345/how-does-the-cpu-writes-data-to-an-io-port</a></p>
+</blockquote>
+<p>重新思考就会发现，内存访问不单单是访问 <code>0xffff</code> 那么简单，中间必然夹杂着其他协议。比如PCI-E 总线，访问地址时会涉及到PCIE总线通讯协议</p>
+<h2 id="网卡接受-发送队列">网卡接受/发送队列</h2>
+<p>网卡有多个接受/发送队列，收到/发送的数据按照一定算法分配到不同的队列，充分利用CPU多核心的特性，不同核心从不同DMA buffer取数据。网卡有网卡芯片和ROM中存放的机器指令</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// https://github.com/torvalds/linux/blob/v6.6/drivers/net/wireless/mediatek/mt76/usb.c#L628</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">mt76u_rx_worker</span><span class="params">(<span class="keyword">struct</span> mt76_worker *w)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mt76_usb</span> *<span class="title">usb</span> =</span> container_of(w, <span class="keyword">struct</span> mt76_usb, rx_worker);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mt76_dev</span> *<span class="title">dev</span> =</span> container_of(usb, <span class="keyword">struct</span> mt76_dev, usb);</span><br><span class="line">    <span class="type">int</span> i;</span><br><span class="line"></span><br><span class="line">    rcu_read_lock();</span><br><span class="line">    <span class="comment">// 遍历每个队列处理rx数据</span></span><br><span class="line">    mt76_for_each_q_rx(dev, i)</span><br><span class="line">        mt76u_process_rx_queue(dev, &amp;dev-&gt;q_rx[i]);</span><br><span class="line">    rcu_read_unlock();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="GRO（Generic-Receive-Offload）">GRO（Generic Receive Offload）</h3>
+<p>和GRO相似的是LRO(large receive offload)</p>
+<p>核心原理：<br>
+将小包组装成大包再交给协议栈，减少协议栈处理包的数量，降低处理压力<br>
+LRO会合并看到的全部包。但小包的TCPHeader可能不尽相同，如果合并成一个TCP包肯定有header要被丢弃，造成数据失真，甚至有些数据包及其依赖TCP header trick，合并会破坏原本的通信。</p>
+<p>GRO是LRO的升级版。<br>
+原理：</p>
+<p>为每种合并都定义合并规则，只有当这些数据字段相同才合并。<br>
+所以GRO有很多类型，针对IP_GRO，TCP_GRO，VxLAN-GRO。</p>
+<p>拿IP举例，如果涉及packet reordering，合并也会取消</p>
+<p>合并规则如下</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://github.com/torvalds/linux/blob/v6.6/net/ipv4/af_inet.c#L1509">https://github.com/torvalds/linux/blob/v6.6/net/ipv4/af_inet.c#L1509</a></p>
+</blockquote>
+<h2 id="NAPI">NAPI</h2>
+<p>基于已有thread_struct封装的新的任务调度库</p>
+<p>kernel thread通过thread_struct调度，napi本身封装了thread_struct，内部有kernel thread</p>
+<p>驱动初始化代码里创建napi结构，kernel会创建对应的调度上下文，napi 被 kernel调度执行，最后回调驱动代码</p>
+<p><img src="/assets/2023-10-10-15-14-23.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>为什么NAPI收到第一个包需要关闭中断？</p>
+<blockquote>
+<p>每收到一个包就触发中断会导致极高的CPU占用。NAPI模型采用polling方式避免了大量的中断触发</p>
+</blockquote>
+<h2 id="RCU-read-copy-update">RCU(read copy update)</h2>
+<p>基于一点，对指针长度的内存数据写入是原子的。只有两个值，新值或旧值，没有中间态</p>
+<p>如果地址总线长度32，那么针对对齐后的4字节写入是原子的</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/2892899/does-a-cpu-assigns-a-value-atomically-to-memory">c - Does a CPU assigns a value atomically to memory? - Stack Overflow</a></p>
+</blockquote>
+<p>如果32长度，写入64长度数据，CPU不得不拆分成两次就不是原子写入</p>
+<p>指针长度往往等于地址总线长度。可以认为：现代CPU中，对齐后的指针写入是原子操作</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://www.kernel.org/doc/html/next/RCU/whatisRCU.html">https://www.kernel.org/doc/html/next/RCU/whatisRCU.html</a></p>
+<p>In contrast, RCU-based updaters typically take advantage of the fact that writes to <strong>single aligned pointers are atomic on modern CPUs</strong>, allowing atomic insertion, removal, and replacement of data items in a linked structure without disrupting readers.</p>
+</blockquote>
+<p>但还是需要 atomic interger</p>
+<p>CPU存在缓存，读取没有中间态，但读写有新旧之分，多核对同一内存值相加，结果不一定符合预期</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://dave.cheney.net/2018/01/06/if-aligned-memory-writes-are-atomic-why-do-we-need-the-sync-atomic-package">If aligned memory writes are atomic, why do we need the sync/atomic package? | Dave Cheney</a></p>
+</blockquote>
+<p>参考</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://www.kernel.org/doc/Documentation/RCU/checklist.txt">kernel.org/doc/Documentation/RCU/checklist.txt</a><br>
+<a target="_blank" rel="noopener" href="https://pdos.csail.mit.edu/6.828/2023/lec/rcu-faq.txt">pdos.csail.mit.edu/6.828/2023/lec/rcu-faq.txt</a><br>
+<a href="/assets/2023-10-26-5.pdf">READ-COPY UPDATE: USING EXECUTION HISTORY TO SOLVE<br>
+CONCURRENCY PROBLEMS</a></p>
+</blockquote>
+<p>总结：</p>
+<p><code>volatile int foo;</code>：最初给IO内存使用，IO内存访问有严格的顺序，确保foo的访问不会被reorder，每次访问都生成访存指令，修改后的值对其他CPU可见，编译器可以reorder其他 <code>non-volatile</code>值的访问。</p>
+<p>如果希望foo的访问在bar之后，光volatile不够，还需要加内存屏障<br>
+<code>__memory_barrier/__sync_synchronize</code></p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Memory_ordering#Compile-time_memory_barrier_implementation">Compile-time memory barrier implementation</a><br>
+<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Memory_ordering#Runtime_memory_ordering">Runtime memory ordering</a><br>
+<a target="_blank" rel="noopener" href="https://www.reddit.com/r/cpp/comments/dh3hle/comment/f3n4lpq/?utm_source=share&amp;utm_medium=web2x&amp;context=3">Why is compiler allowed to reorder instructions around system calls? : r/cpp</a></p>
+</blockquote>
+<p>原则上 volatile 和memory barrier是两个东西，现在的编译器提供的内置sync函数默认都会添加full memory barrier</p>
+<p>比如</p>
+<blockquote>
+<p>GCC <a target="_blank" rel="noopener" href="https://www.ibm.com/docs/en/xl-c-and-cpp-aix/16.1?topic=functions-sync-bool-compare-swap#:~:text=A%20full%20memory%20barrier%20is%20created%20when%20this%20function%20is%20invoked.">__sync_bool_compare_and_swap - IBM Documentation</a><br>
+Clang  <a target="_blank" rel="noopener" href="https://clang.llvm.org/docs/LanguageExtensions.html#:~:text=The%20__sync_swap()%20builtin%20is%20a%20full%20barrier.">Clang Language Extensions — Clang 18.0.0git documentation</a></p>
+</blockquote>
+<p>atomic算是volatile和memory_barrier的合体。store/load 接收ordering参数，能够更细粒度控制 memory ordering，依赖CPU架构提供的指令（x86的LOCK_总线同步）</p>
+<h2 id="硬件中断-软中断-tasklet-threaded-irq">硬件中断/软中断/tasklet/threaded irq</h2>
+<p>硬件中断优先级最高，内核需要马上停止其他工作来执行硬件中断handler。handler执行时间过长会影响系统稳定性，于是硬件中断handler将其他的工作以软中断的方式进行，tasklet就是依赖软中断的一个系统。软中断并没有自己的上下文，直接运行在kernel上下文，所以无法被像thread一样调度，执行时间长会影响稳定性。</p>
+<p>现在逐渐废弃 tasklet，将handler都变为thread，由kernel调度器统一执行调度</p>
+<p>如果全部软中断执行的时间太长，每个CPU单独的ksoftirqd会负责执行其他的软中断work。ksoftirqd会通过线程来执行软中断</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://lwn.net/Articles/925540/">Heuristics for software-interrupt processing [LWN.net]</a></p>
+</blockquote>
+<h2 id="中断处理程序（ISR）运行在哪个-CPU-core">中断处理程序（ISR）运行在哪个 CPU core?</h2>
+<p>结论；中断控制器决定哪个core运行 ISR，当然，事无绝对，system boot阶段如果有中断会默认发送core0。<br>
+x86有APIC，APIC通过总线连接CPU进行通讯</p>
+<p>还是那句话，<strong>计算机是人造的，解决问题的方法千千万，现在使用的方法清楚就行，不要抱着“为什么是这种方式，而不是那种”，就是选了这种方式罢了</strong></p>
+<p><img src="/assets/2023-10-10-15-14-47.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/58054305/how-does-the-cpu-decide-what-core-should-handle-a-hardware-interrupt/58054373#58054373">x86 - How does the CPU decide what core should handle a hardware interrupt? - Stack Overflow</a><br>
+<a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/49379899/multi-core-cpu-interrupts/49414183#49414183">multiprocessing - Multi-core CPU interrupts - Stack Overflow</a><br>
+<a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/49379899/multi-core-cpu-interrupts">multiprocessing - Multi-core CPU interrupts - Stack Overflow</a></p>
+</blockquote>
+<h2 id="根文件系统">根文件系统</h2>
+<p>initial-rootfs是只读的，只用于kernel启动的初始化过程。有kernel Image，必要的二进制，比如 /sbin/init</p>
+<p>初始rootfs必须能被bootloader访问，可能是rootfs自身，又或者放在引导分区内</p>
+<p>bootloader才能获得kernel image和初始rootfs，并将他们放到内存并启动kernel</p>
+<p>kernel启动后判断初始rootfs格式，选择挂载(ext2)，还是先解压再挂载（cpio），可以从userspace系统获取必要的驱动，模块，初始化程序。</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://github.com/torvalds/linux/blob/9aa5db95729cc6936eeb5b51868a57602f52bd3d/init/do_mounts_rd.c#L58">identify_ramdisk_image</a></p>
+</blockquote>
+<p>kernel内核态初始化完成后结尾调用 sbin/init 初始化用户进程。init进程根据 fstab（或者其他配置） 对 <code>/</code> 进行remount，重新挂载（remount）为磁盘憋处的真正文件系统（比如ext4）</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Initial_ramdisk#Implementation">rootfs</a></p>
+</blockquote>
+<p>想想就行了，如果全流程都用initial rootfs，你修改内容每次都要重新更新它，或者再其上添加overlay</p>
+<p>现在debian也只会在某些情况，比如升级kernel版本，才会调用 <code>update-initramfs</code> 更新initial rootfs，给kernel启动时用</p>
+<h3 id="initrd-vs-initramfs">initrd vs initramfs</h3>
+<p>initrd: initial ram disk<br>
+initramfs: 就叫 initramfs</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/filesystems/ramfs-rootfs-initramfs.rst">initrd vs initramfs</a></p>
+</blockquote>
+<h2 id="内存对齐">内存对齐</h2>
+<p>内存是线性的，但是逻辑上的线性，和实际的存储方式并不关联。线性内存方便从软件角度理解内存</p>
+<p>内存条结构如下<br>
+<img src="/assets/2023-10-20-14-39-55.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p><img src="/assets/2023-10-20-14-47-30.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>内存访问结构如下。</p>
+<p><img src="/assets/2023-10-20-14-43-21.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>32位地址总线，CPU是32位寄存器。一次至多传递4字节数据。矩阵式排列最适合逐行扫描，一次性访问4字节，控制器一次就可以扫描完成</p>
+<p>非对齐访问需要跨行访问，控制器先扫描第一行，将前两字节数据放到寄存器的低两字节，再扫描第二行放到寄存器高两字节，同样读取两字节，非对齐需要两次操作</p>
+<p><img src="/assets/2023-10-20-15-23-35.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/a/12881322/7529562">https://stackoverflow.com/a/12881322/7529562</a></p>
+</blockquote>
+<h2 id="引用">引用</h2>
+<p><a href="/assets/MHVLUG_2017-04_Network_Receive_Stack.pdf">MHVLUG_2017-04_Network_Receive_Stack.pdf</a></p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://lwn.net/Articles/358910/">https://lwn.net/Articles/358910/</a></p>
+<p><a target="_blank" rel="noopener" href="https://doc.dpdk.org/guides/prog_guide/generic_receive_offload_lib.html#:~:text=Generic%20Receive%20Offload%20(GRO)%20is,of%20packets%20to%20be%20processed">https://doc.dpdk.org/guides/prog_guide/generic_receive_offload_lib.html#:~:text=Generic Receive Offload (GRO) is,of packets to be processed</a>.</p>
+</blockquote>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Kernel/" rel="tag"># Kernel</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/11/03/63/" rel="prev" title="e1000收包callstack分析">
+      <i class="fa fa-chevron-left"></i> e1000收包callstack分析
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2023/11/03/62/" rel="next" title="发包callstack分析">
+      发包callstack分析 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#WI-FI-%E5%A6%82%E4%BD%95%E4%BC%A0%E8%BE%93%E6%95%B0%E6%8D%AE"><span class="nav-number">1.</span> <span class="nav-text">WI-FI 如何传输数据</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B0%83%E5%88%B6%E8%A7%A3%E8%B0%83"><span class="nav-number">1.1.</span> <span class="nav-text">调制解调</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#device-driver-%E5%92%8C-firmware-%E5%8C%BA%E5%88%AB"><span class="nav-number">2.</span> <span class="nav-text">device driver 和 firmware 区别</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BA%BF%E6%8E%A5%E5%8F%A3"><span class="nav-number">3.</span> <span class="nav-text">总线接口</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%AD%E6%96%AD"><span class="nav-number">4.</span> <span class="nav-text">中断</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A9%B1%E5%8A%A8%E5%A6%82%E4%BD%95%E4%BD%9C%E4%B8%BA%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97%E8%A2%AB%E5%8A%A0%E8%BD%BD"><span class="nav-number">5.</span> <span class="nav-text">驱动如何作为内核模块被加载</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A9%B1%E5%8A%A8%E5%8A%A0%E8%BD%BD%E6%B5%81%E7%A8%8B"><span class="nav-number">6.</span> <span class="nav-text">驱动加载流程</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#PCI-e-%E6%80%BB%E7%BA%BF%E7%BB%93%E6%9E%84%E4%B8%BA%E4%BE%8B"><span class="nav-number">6.1.</span> <span class="nav-text">PCI-e 总线结构为例</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E4%BA%A4%E4%BA%92%E7%9A%84%E5%87%A0%E7%A7%8D%E6%96%B9%E5%BC%8F"><span class="nav-number">7.</span> <span class="nav-text">数据交互的几种方式</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#initcall-kernel-init-%E5%88%9D%E5%A7%8B%E5%8C%96%E8%BF%87%E7%A8%8B"><span class="nav-number">8.</span> <span class="nav-text">initcall - kernel init 初始化过程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%E4%B8%8E%E7%BC%BA%E9%A1%B5%E4%B8%AD%E6%96%AD%EF%BC%88page-fault%EF%BC%89"><span class="nav-number">9.</span> <span class="nav-text">虚拟内存与缺页中断（page fault）</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#DMA-%E7%9B%B4%E6%8E%A5%E5%86%85%E5%AD%98%E8%AE%BF%E9%97%AE"><span class="nav-number">10.</span> <span class="nav-text">DMA(直接内存访问)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%99%9A%E6%8B%9F%E5%9C%B0%E5%9D%80%EF%BC%8C%E7%89%A9%E7%90%86%E5%9C%B0%E5%9D%80%EF%BC%8C%E6%80%BB%E7%BA%BF%E5%9C%B0%E5%9D%80"><span class="nav-number">11.</span> <span class="nav-text">虚拟地址，物理地址，总线地址</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BD%91%E5%8D%A1%E6%8E%A5%E5%8F%97-%E5%8F%91%E9%80%81%E9%98%9F%E5%88%97"><span class="nav-number">12.</span> <span class="nav-text">网卡接受&#x2F;发送队列</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#GRO%EF%BC%88Generic-Receive-Offload%EF%BC%89"><span class="nav-number">12.1.</span> <span class="nav-text">GRO（Generic Receive Offload）</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#NAPI"><span class="nav-number">13.</span> <span class="nav-text">NAPI</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#RCU-read-copy-update"><span class="nav-number">14.</span> <span class="nav-text">RCU(read copy update)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%A1%AC%E4%BB%B6%E4%B8%AD%E6%96%AD-%E8%BD%AF%E4%B8%AD%E6%96%AD-tasklet-threaded-irq"><span class="nav-number">15.</span> <span class="nav-text">硬件中断&#x2F;软中断&#x2F;tasklet&#x2F;threaded irq</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%AD%E6%96%AD%E5%A4%84%E7%90%86%E7%A8%8B%E5%BA%8F%EF%BC%88ISR%EF%BC%89%E8%BF%90%E8%A1%8C%E5%9C%A8%E5%93%AA%E4%B8%AA-CPU-core"><span class="nav-number">16.</span> <span class="nav-text">中断处理程序（ISR）运行在哪个 CPU core?</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B9%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F"><span class="nav-number">17.</span> <span class="nav-text">根文件系统</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#initrd-vs-initramfs"><span class="nav-number">17.1.</span> <span class="nav-text">initrd vs initramfs</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90"><span class="nav-number">18.</span> <span class="nav-text">内存对齐</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E7%94%A8"><span class="nav-number">19.</span> <span class="nav-text">引用</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

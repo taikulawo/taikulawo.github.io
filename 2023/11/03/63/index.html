@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="驱动层 驱动向内核注册 softirq，里面包含回调函数。驱动收到数据触发中断，kernel读取 1234567891011121314__netif_receive_skb_list_ptype(struct net_device * orig_dev, struct packet_type * pt_prev, struct list_head * head) (&#x2F;data00&#x2F;codes&#x2F;l">
+<meta property="og:type" content="article">
+<meta property="og:title" content="e1000收包callstack分析">
+<meta property="og:url" content="http://www.chaochaogege.com/2023/11/03/63/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="驱动层 驱动向内核注册 softirq，里面包含回调函数。驱动收到数据触发中断，kernel读取 1234567891011121314__netif_receive_skb_list_ptype(struct net_device * orig_dev, struct packet_type * pt_prev, struct list_head * head) (&#x2F;data00&#x2F;codes&#x2F;l">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-14-23.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-11-01-41.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-30.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-11-01-40.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-26.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-26-1.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-31-21.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-23-16-51-11.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-31-22.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-31-23.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-23-16-52-49.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-31-18.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-31-19.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2023-10-31-20.png">
+<meta property="article:published_time" content="2023-11-03T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-11-03T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="Kernel">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://www.chaochaogege.com/assets/2023-10-10-15-14-23.png">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2023/11/03/63/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>e1000收包callstack分析 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2023/11/03/63/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          e1000收包callstack分析
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2023-11-03 00:00:00" itemprop="dateCreated datePublished" datetime="2023-11-03T00:00:00+00:00">2023-11-03</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="驱动层">驱动层</h2>
+<p>驱动向内核注册 softirq，里面包含回调函数。驱动收到数据触发中断，kernel读取</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">__netif_receive_skb_list_ptype(<span class="keyword">struct</span> net_device * orig_dev, <span class="keyword">struct</span> packet_type * pt_prev, <span class="keyword">struct</span> list_head * head) (/data00/codes/linux/net/core/dev.c:<span class="number">5533</span>)</span><br><span class="line">__netif_receive_skb_list_core(<span class="keyword">struct</span> list_head * head, <span class="type">bool</span> pfmemalloc) (/data00/codes/linux/net/core/dev.c:<span class="number">5582</span>)</span><br><span class="line">__netif_receive_skb_list(<span class="keyword">struct</span> list_head * head) (/data00/codes/linux/net/core/dev.c:<span class="number">5634</span>)</span><br><span class="line">netif_receive_skb_list_internal(<span class="keyword">struct</span> list_head * head) (/data00/codes/linux/net/core/dev.c:<span class="number">5725</span>)</span><br><span class="line">gro_normal_list(<span class="keyword">struct</span> napi_struct * napi) (/data00/codes/linux/include/net/gro.h:<span class="number">433</span>)</span><br><span class="line">gro_normal_list(<span class="keyword">struct</span> napi_struct * napi) (/data00/codes/linux/include/net/gro.h:<span class="number">429</span>)</span><br><span class="line">napi_complete_done(<span class="keyword">struct</span> napi_struct * n, <span class="type">int</span> work_done) (/data00/codes/linux/net/core/dev.c:<span class="number">6065</span>)</span><br><span class="line">e1000_clean(<span class="keyword">struct</span> napi_struct * napi, <span class="type">int</span> budget) (/data00/codes/linux/drivers/net/ethernet/intel/e1000/e1000_main.c:<span class="number">3811</span>)</span><br><span class="line">__napi_poll(<span class="keyword">struct</span> napi_struct * n, <span class="type">bool</span> * repoll) (/data00/codes/linux/net/core/dev.c:<span class="number">6496</span>)</span><br><span class="line">napi_poll(<span class="keyword">struct</span> list_head * repoll, <span class="keyword">struct</span> napi_struct * n) (/data00/codes/linux/net/core/dev.c:<span class="number">6563</span>)</span><br><span class="line">net_rx_action(<span class="keyword">struct</span> softirq_action * h) (/data00/codes/linux/net/core/dev.c:<span class="number">6696</span>)</span><br><span class="line">__do_softirq() (/data00/codes/linux/kernel/softirq.c:<span class="number">571</span>)</span><br><span class="line">do_softirq() (/data00/codes/linux/kernel/softirq.c:<span class="number">472</span>)</span><br><span class="line">do_softirq() (/data00/codes/linux/kernel/softirq.c:<span class="number">459</span>)</span><br></pre></td></tr></table></figure>
+<h3 id="NAPI">NAPI</h3>
+<p>基于已有thread_struct封装的新的任务调度库</p>
+<p>kernel thread通过thread_struct调度，napi本身封装了thread_struct，内部有kernel thread</p>
+<p>驱动初始化代码里创建napi结构，kernel会创建对应的调度上下文，napi 被 kernel调度执行，最后回调驱动代码</p>
+<p><img src="/assets/2023-10-10-15-14-23.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>为什么NAPI收到第一个包需要关闭中断？</p>
+<blockquote>
+<p>每收到一个包就触发中断会导致极高的CPU占用。NAPI模型采用polling方式避免了大量的中断触发</p>
+</blockquote>
+<h2 id="内核网络层">内核网络层</h2>
+<p><code>receive_skb*</code> 有list和非list版本。list可以做GRO合并，根据条件合并多个skb，减少重复处理次数。以list版本继续分析</p>
+<p>调用次序</p>
+<ol>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/core/dev.c#L5803"><code>netif_receive_skb_list</code></a></li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/core/dev.c#L5603"><code>__netif_receive_skb_list_core</code></a></li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/core/dev.c#L5315"><code>__netif_receive_skb_core</code></a></li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/core/dev.c#L2208"><code>deliver_skb</code></a><br>
+回调 packet_type 指向的handler</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">deliver_skb</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> packet_type *pt_prev,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> net_device *orig_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	refcount_inc(&amp;skb-&gt;users);</span><br><span class="line">	<span class="keyword">return</span> pt_prev-&gt;func(skb, skb-&gt;dev, pt_prev, orig_dev);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="IP-层">IP 层</h3>
+<p>ipv4 的handler在init阶段注册<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/af_inet.c#L2051">inet_init</a></p>
+<p>deliver_skb -&gt; <a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/ip_input.c#L560">ip_rcv</a>，继续ipv4 流程处理</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * IP receive entry point</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">ip_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> packet_type *pt,</span></span><br><span class="line"><span class="params">	   <span class="keyword">struct</span> net_device *orig_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line"></span><br><span class="line">	skb = ip_rcv_core(skb, net);</span><br><span class="line">	<span class="keyword">if</span> (skb == <span class="literal">NULL</span>)</span><br><span class="line">		<span class="keyword">return</span> NET_RX_DROP;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_PRE_ROUTING,</span><br><span class="line">		       net, <span class="literal">NULL</span>, skb, dev, <span class="literal">NULL</span>,</span><br><span class="line">		       ip_rcv_finish);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>ip_rcv 逻辑很少，在计数，包检查后交给netfilter hook处理，处理完调用 <code>ip_rcv_finish</code></p>
+<p>skb刚进入IP层第一时间调用 <code>PRE_ROUTING</code> hook</p>
+<ol start="5">
+<li>netfilter <code>PRE_ROUTING</code> hook</li>
+</ol>
+<p>netfilter hook 执行过程后面会详细讲解</p>
+<ol start="6">
+<li>ip_rcv_finish</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_rcv_finish</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb-&gt;dev;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* </span></span><br><span class="line"><span class="comment">	 * if ingress device is enslaved to an L3 master device pass the</span></span><br><span class="line"><span class="comment">	 * skb to its handler for processing</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 <span class="comment">// 未开启CONFIG_NET_L3_MASTER_DEV时</span></span><br><span class="line">	 <span class="comment">// l3mdev_ip_rcv do nothing</span></span><br><span class="line">	skb = l3mdev_ip_rcv(skb);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">return</span> NET_RX_SUCCESS;</span><br><span class="line">    <span class="comment">// 查找路由表</span></span><br><span class="line">	ret = ip_rcv_finish_core(net, sk, skb, dev, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="keyword">if</span> (ret != NET_RX_DROP)</span><br><span class="line">		ret = dst_input(skb);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ol start="7">
+<li><code>ip_rcv_finish_core</code>: 查路由表，详细路由查询在 <a href="#%E8%B7%AF%E7%94%B1%E9%80%89%E6%8B%A9">路由选择</a></li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/route.c#L2223"><code>ip_route_input_slow</code></a>：路由查询入口函数</li>
+</ol>
+<p>单就路由而言，路由是根据目的地IP进行选择的过程。而 PBR（policy-based routing）的引入使得路由结果还受 source ip address, skb-&gt;mark, tcp/udp source/destination port 等变量影响。<code>struct flowi4</code> 包含了上述可以被参考的字段值。</p>
+<p><code>struct flowi4</code><br>
+<code>fib_lookup</code>/<code>fib_table_lookup</code> 需 <code>struct flowi4</code> 和 <code>struct fib_result</code> 参数。<br>
+给接下来的路由选择准备所需参数。</p>
+<ul>
+<li>初始化 <code>struct flowi4</code>：给PBR提供除 destination ip 之外的参考信息</li>
+<li><code>struct fib_result</code>：fib_lookup 的 in_out 返回结果。</li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/route.c#L2337">ip_mkroute_input</a>：根据  <code>fib_lookup</code> 返回的 <code>struct fib_result</code> 构造route cache
+<ul>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/route.c#L1759">skb_dst_set</a>：将cache写入skb <code>struct dst_entry</code>字段</li>
+</ul>
+</li>
+</ul>
+<p>调用<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/include/net/ip_fib.h#L310"><code>fib_lookup</code></a>开始路由选择</p>
+<p><img src="/assets/2023-11-01-41.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h4 id="路由选择">路由选择</h4>
+<p>路由选择总览<br>
+<img src="/assets/2023-10-30.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>fib(forwarding information base)<br>
+kernel kbuild有<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/Kconfig#L63">IP_MULTIPLE_TABLES</a>选项。关闭则只有一张main表</p>
+<p>使用如下 fib_lookup 函数</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">fib_lookup</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="type">const</span> <span class="keyword">struct</span> flowi4 *flp,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> fib_result *res, <span class="type">unsigned</span> <span class="type">int</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line"></span><br><span class="line">	tb = fib_get_table(net, RT_TABLE_MAIN);</span><br><span class="line">	<span class="keyword">if</span> (tb)</span><br><span class="line">		err = fib_table_lookup(tb, flp, res, flags | FIB_LOOKUP_NOREF);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err == -EAGAIN)</span><br><span class="line">		err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>开启则引入多路由表，代码如下</p>
+<ol>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/include/net/ip_fib.h#L310"><code>fib_lookup</code></a></li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">fib_lookup</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> flowi4 *flp,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> fib_result *res, <span class="type">unsigned</span> <span class="type">int</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	flags |= FIB_LOOKUP_NOREF;</span><br><span class="line">	<span class="keyword">if</span> (net-&gt;ipv4.fib_has_custom_rules)</span><br><span class="line">	<span class="comment">// 如果有策略路由(Policy-based routing (PBR))</span></span><br><span class="line">	<span class="comment">// 进行PBR匹配</span></span><br><span class="line">	<span class="comment">// 下面的fib_table_lookup查找的是 ip route show 展示的路由</span></span><br><span class="line">	<span class="comment">// 也就是PBR的main routing table</span></span><br><span class="line">	<span class="comment">// 所以不需要再调用fib_table_lookup</span></span><br><span class="line">	<span class="comment">// ip rule list</span></span><br><span class="line">	<span class="comment">// Priority: 32766, Selector: match anything, Action: lookup</span></span><br><span class="line">	<span class="comment">// routing table main (ID 254).  The main table is the normal</span></span><br><span class="line">	<span class="comment">// routing table containing all non-policy routes</span></span><br><span class="line">		<span class="keyword">return</span> __fib_lookup(net, flp, res, flags);</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line"></span><br><span class="line">	res-&gt;tclassid = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">// 默认三张表</span></span><br><span class="line">	<span class="comment">// local main default</span></span><br><span class="line">	<span class="comment">// 这里只查了 main 和 default表，没有 local</span></span><br><span class="line">	<span class="comment">// 如果开启策略路由，在上面调用 __fib_lookup 并返回</span></span><br><span class="line">	<span class="comment">// 否则 local 合并到 main table 查询</span></span><br><span class="line">	<span class="comment">// 好处：代码尽量复用，如果用户不开启自定义rule，速度会有提升</span></span><br><span class="line">	<span class="comment">// 开启 RPDB ，kernel调用 fib_trie_unmerge()，将 local 从 main 剥离</span></span><br><span class="line">	<span class="comment">// https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=0ddcf43d5d4a03ded1ee3f6b3b72a0cbed4e90b1	</span></span><br><span class="line">	tb = rcu_dereference_rtnl(net-&gt;ipv4.fib_main);</span><br><span class="line">	<span class="keyword">if</span> (tb)</span><br><span class="line">		err = fib_table_lookup(tb, flp, res, flags);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">    <span class="comment">// 查default表</span></span><br><span class="line">	tb = rcu_dereference_rtnl(net-&gt;ipv4.fib_default);</span><br><span class="line">	<span class="keyword">if</span> (tb)</span><br><span class="line">		err = fib_table_lookup(tb, flp, res, flags);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">if</span> (err == -EAGAIN)</span><br><span class="line">		err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>使用 ip rule 列出/添加/删除 PBR</p>
+<figure class="highlight txt"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">$ ip rule list</span><br><span class="line"># PRIORITY SELECTOR ACTION</span><br><span class="line">0:      from 127.0.0.1 iif lo ipproto tcp lookup 127</span><br><span class="line">0:      from 127.0.0.1 iif lo ipproto udp lookup 127</span><br><span class="line">0:      from all iif lo ipproto tcp lookup 128</span><br><span class="line">0:      from all iif lo ipproto udp lookup 128</span><br><span class="line">0:      from all lookup local</span><br><span class="line">32766:  from all lookup main</span><br><span class="line">32767:  from all lookup default</span><br></pre></td></tr></table></figure>
+<p>每个规则包含三部分，优先级，选择器，执行结果。优先级从小到大是规则被匹配的顺序。选择器匹配包信息，ACTION 执行具体的操作。</p>
+<p><code>from all</code>：任意source ip数据包都命中，执行action</p>
+<p><code>lookup local</code>: 到local表继续查找<br>
+<code>lookup main</code>: 到main表继续查找<br>
+<code>lookup default</code>: 到default表继续查找<br>
+local, main, default 表的查找顺序也对应了 <code>fib_lookup</code> 的表查找顺序</p>
+<p>如果 ip rule 过程有一条规则命中，查找马上停止，并使用此规则作为最后的路由规则。</p>
+<p><img src="/assets/2023-11-01-40.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>fib_lookup<br>
+=&gt; <a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/fib_rules.c#L81"><code>__fib_lookup</code></a>：策略路由查找<br>
+=&gt; fib_table_lookup: 路由查找算法实现</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 路由查找算法</span></span><br><span class="line"><span class="comment">// default via 10.0.2.2 dev enp0s3</span></span><br><span class="line"><span class="comment">// 10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15</span></span><br><span class="line"><span class="comment">// 最长前缀匹配</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_table_lookup</span><span class="params">(<span class="keyword">struct</span> fib_table *tb, <span class="type">const</span> <span class="keyword">struct</span> flowi4 *flp,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> fib_result *res, <span class="type">int</span> fib_flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Step 1: Travel to the longest prefix match in the trie */</span></span><br><span class="line">	<span class="keyword">for</span> (;;) &#123;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Step 2: Sort out leaves and begin backtracing for longest prefix */</span></span><br><span class="line">	<span class="keyword">for</span> (;;) &#123;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">found:</span><br><span class="line">	<span class="comment">/* Step 3: Process the leaf, if that fails fall back to backtracing */</span></span><br><span class="line">	<span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="struct-rtable">struct rtable</h4>
+<p>代表一条路由规则，路由结束绑定到<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/include/linux/skbuff.h#L882"><code>skb#_skb_refdst</code></a></p>
+<ul>
+<li><code>struct dst_entry dst</code><br>
+下面详细介绍</li>
+<li><code>_u16 rt_type</code></li>
+</ul>
+<p>本路由类型</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>值</th>
+<th>ip route</th>
+<th style="text-align:left">含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RTN_UNICAST</code></td>
+<td>1</td>
+<td><code>unicast</code></td>
+<td style="text-align:left">默认值，如果<code>skb#_skb_refdst</code>是此值，数据需要被转发</td>
+</tr>
+<tr>
+<td><code>RTN_LOCAL</code></td>
+<td>2</td>
+<td><code>local</code></td>
+<td style="text-align:left">本机路由</td>
+</tr>
+<tr>
+<td><code>RNT_BROADCAST</code></td>
+<td>3</td>
+<td>广播</td>
+<td style="text-align:left">需要转发</td>
+</tr>
+<tr>
+<td><code>RTN_MULTICAST</code></td>
+<td>5</td>
+<td>多播</td>
+<td style="text-align:left">多播</td>
+</tr>
+<tr>
+<td><code>RNT_UNREACHABLE</code></td>
+<td>7</td>
+<td><code>unreachable</code></td>
+<td style="text-align:left">丢弃，返回 ICMP network unreachable</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>__u8 rt_uses_gateway</code>
+<ul>
+<li>bool，路由的下一跳是网关(ip route 返回类似 <code>via 10.0.0.1</code> 的格式)，那么<code>rt_gw4</code>包含网关IP地址。</li>
+</ul>
+</li>
+<li><code>u8 rt_gw_family</code>
+<ul>
+<li>如果 <code>rt_uses_gateway</code> 是0，那 <code>rt_gw_family</code> 是0。如果网关地址是IPV4，=AF_INET。IPV6, =AF_INET6</li>
+</ul>
+</li>
+<li><code>union &#123;__be32 rt_gw4; struct in6_addr rt_gw6;&#125;</code>
+<ul>
+<li>如果是网关，根据IP类型使用 <code>rt_gw4</code> 或 <code>rt_gw6</code> 字段</li>
+</ul>
+</li>
+</ul>
+<h4 id="struct-dst-entry">struct dst_entry</h4>
+<ul>
+<li>
+<p><code>struct net_device *dev</code></p>
+<ul>
+<li>发送数据的网络设备，数据包最终从此设备发送</li>
+</ul>
+</li>
+<li>
+<p><code>struct xfrm_state *xfrm</code></p>
+<ul>
+<li>和IPsec 相关，一般是NULL</li>
+</ul>
+</li>
+<li>
+<p><code>int (_input)(struct sk_buff_skb)</code></p>
+<ul>
+<li>
+<p>根据路由结果，input是不同值。决定数据包接下来如果处理。dest ip本机则继续向上传递。不是本机的ip则转发</p>
+<table>
+<thead>
+<tr>
+<th>可选值</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dst_discard</td>
+<td>默认值</td>
+</tr>
+<tr>
+<td>ip_local_deliver</td>
+<td>目的地址是本机，或者广播数据包</td>
+</tr>
+<tr>
+<td>ip_forward</td>
+<td>单播，但不是本机，需要转发</td>
+</tr>
+<tr>
+<td>ip_mr_input</td>
+<td>收到多播包处理 <a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6/source/net/ipv4/route.c#L1754">ip_mr_input</a></td>
+</tr>
+<tr>
+<td>ip_error</td>
+<td>没有找到匹配路由，<code>unreachable</code>，数据包丢弃，返回ICMP host unreachable</td>
+</tr>
+<tr>
+<td>lwtunnel_input</td>
+<td><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v5.14.7/source/net/Kconfig#L390">Kconfig - net/Kconfig - Linux source code (v5.14.7) - Bootlin</a></td>
+</tr>
+</tbody>
+</table>
+</li>
+</ul>
+</li>
+<li>
+<p><code>int (_output)(struct net_net, struct sock _sk, struct sk_buff_skb);</code></p>
+<ul>
+<li>
+<p>根据路由结果 output 指向不同函数。决定数据包如何发送</p>
+<table>
+<thead>
+<tr>
+<th>可选值</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dst_discard_out()</td>
+<td>默认值</td>
+</tr>
+<tr>
+<td>ip_output</td>
+<td>本机生成，需要发送的单播包</td>
+</tr>
+<tr>
+<td>ip_rt_bug()</td>
+<td>bug?</td>
+</tr>
+<tr>
+<td>xfrm4_output</td>
+<td>要转发的数据包</td>
+</tr>
+<tr>
+<td>ip_mc_output</td>
+<td>本机生成，需发送的多播（multicast）包</td>
+</tr>
+</tbody>
+</table>
+</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * 	Deliver IP Packets to the higher protocol layers.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">ip_local_deliver</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Reassemble IP fragments.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb-&gt;dev);</span><br><span class="line">    <span class="comment">// 如果skb对应的ip包被链路层分片</span></span><br><span class="line">	<span class="keyword">if</span> (ip_is_fragment(ip_hdr(skb))) &#123;</span><br><span class="line">    	<span class="comment">// 尝试重组</span></span><br><span class="line">		<span class="keyword">if</span> (ip_defrag(net, skb, IP_DEFRAG_LOCAL_DELIVER))</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_LOCAL_IN,</span><br><span class="line">		       net, <span class="literal">NULL</span>, skb, skb-&gt;dev, <span class="literal">NULL</span>,</span><br><span class="line">		       ip_local_deliver_finish);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>尝试重组skb。如果此skb分片包的最后一个那么<code>ip_defrag</code>返回0，获得完成的ip数据包。</p>
+<p><img src="/assets/2023-10-26.png" alt="" style="max-width: 400px;width: 100%;"><br>
+<em>ip_local_deliver call stack</em></p>
+<p><code>dst_input</code> 是很薄的中间函数</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">dst_input</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> INDIRECT_CALL_INET(skb_dst(skb)-&gt;input,</span><br><span class="line">				  ip6_input, ip_local_deliver, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>展开 <code>INDIRECT_CALL_INET</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> INDIRECT_CALL_INET(f, f2, f1, ...) \</span></span><br><span class="line"><span class="meta">    INDIRECT_CALL_2(f, f2, f1, __VA_ARGS__)</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Expands to</span></span><br><span class="line">(&#123;</span><br><span class="line">    __builtin_expect(!!(skb_dst(skb)-&gt;input == ip6_input), <span class="number">1</span>) ?</span><br><span class="line">        ip6_input(skb) :</span><br><span class="line">        (&#123;</span><br><span class="line">            __builtin_expect(!!(skb_dst(skb)-&gt;input ==</span><br><span class="line">                        ip_local_deliver),</span><br><span class="line">                     <span class="number">1</span>) ?</span><br><span class="line">                ip_local_deliver(skb) :</span><br><span class="line">                skb_dst(skb)-&gt;input(skb);</span><br><span class="line">        &#125;);</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure>
+<p>如果 input 不等于 <code>ip_local_deliver</code> ，调用 <code>skb_dst(skb)-&gt;input(skb);</code>，否则调用 <code>ip_local_deliver</code></p>
+<p>这样就包含多条路径，这些路径的 input 都在路由选择阶段赋值。<br>
+如果 input == <code>ip_forward</code> 说明数据包需要转发到本机外</p>
+<h4 id="ip-forward">ip_forward</h4>
+<p><img src="/assets/2023-10-26-1.png" alt="" style="max-width: 400px;width: 100%;"><br>
+<em>ip forward 调用栈</em></p>
+<ol>
+<li>ip_forward<br>
+调用 <em>netfilter forward hook</em></li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_forward</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span> &#123;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    <span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_FORWARD,</span><br><span class="line">    		       net, <span class="literal">NULL</span>, skb, skb-&gt;dev, rt-&gt;dst.dev,</span><br><span class="line">    		       ip_forward_finish);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ol start="2">
+<li>ip_forward_finish</li>
+<li>dst_output<br>
+调用网络层output handler，通常会调用<code>ip_output</code>
+<ol>
+<li><code>ip_output</code>: 利用IP协议发送</li>
+<li><code>xfrm4_output</code>: IPsec送达</li>
+<li><code>ip_mc_output</code>: multicast packets</li>
+</ol>
+</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Output packet to network from transport.  */</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">dst_output</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> INDIRECT_CALL_INET(skb_dst(skb)-&gt;output,</span><br><span class="line">				  ip6_output, ip_output,</span><br><span class="line">				  net, sk, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ol start="4">
+<li>ip_output</li>
+</ol>
+<p>执行 <em>Netfilter POSTROUTING HOOK</em></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_output</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb_dst(skb)-&gt;dev, *indev = skb-&gt;dev;</span><br><span class="line"></span><br><span class="line">	skb-&gt;dev = dev;</span><br><span class="line">	skb-&gt;protocol = htons(ETH_P_IP);</span><br><span class="line">	<span class="keyword">return</span> NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,</span><br><span class="line">			    net, sk, skb, indev, dev,</span><br><span class="line">			    ip_finish_output,</span><br><span class="line">			    !(IPCB(skb)-&gt;flags &amp; IPSKB_REROUTED));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ol start="5">
+<li><code>ip_finish_output</code></li>
+<li><code>__ip_finish_output</code></li>
+<li><code>ip_finish_output2</code></li>
+</ol>
+<p>进入<code>netghbouring subsystem</code> ，查找ARP cache，找到链路层 MAC</p>
+<h4 id="ip-local-deliver">ip_local_deliver</h4>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> rtable *<span class="title function_">rt_dst_alloc</span><span class="params">(<span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">			    <span class="type">unsigned</span> <span class="type">int</span> flags, u16 type,</span></span><br><span class="line"><span class="params">			    <span class="type">bool</span> noxfrm)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span>;</span></span><br><span class="line"></span><br><span class="line">	rt = dst_alloc(&amp;ipv4_dst_ops, dev, <span class="number">1</span>, DST_OBSOLETE_FORCE_CHK,</span><br><span class="line">		       (noxfrm ? DST_NOXFRM : <span class="number">0</span>));</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (rt) &#123;</span><br><span class="line">		rt-&gt;rt_genid = rt_genid_ipv4(dev_net(dev));</span><br><span class="line">		rt-&gt;rt_flags = flags;</span><br><span class="line">		rt-&gt;rt_type = type;</span><br><span class="line">		rt-&gt;rt_is_input = <span class="number">0</span>;</span><br><span class="line">		rt-&gt;rt_iif = <span class="number">0</span>;</span><br><span class="line">		rt-&gt;rt_pmtu = <span class="number">0</span>;</span><br><span class="line">		rt-&gt;rt_mtu_locked = <span class="number">0</span>;</span><br><span class="line">		rt-&gt;rt_uses_gateway = <span class="number">0</span>;</span><br><span class="line">		rt-&gt;rt_gw_family = <span class="number">0</span>;</span><br><span class="line">		rt-&gt;rt_gw4 = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">		rt-&gt;dst.output = ip_output;</span><br><span class="line">		<span class="keyword">if</span> (flags &amp; RTCF_LOCAL)</span><br><span class="line">    		<span class="comment">// 送达本机上层协议栈</span></span><br><span class="line">			rt-&gt;dst.input = ip_local_deliver;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> rt;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>ip_local_deliver 在创建 <code>dst_entry</code>时初始化。如果ip packet目的地为本机，继续传递到上层协议栈</p>
+<p>假设packet送往本机，分析 ip_local_deliver</p>
+<p>继续调用</p>
+<ol>
+<li>ip_local_deliver</li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/ip_input.c#L227"><code>ip_local_deliver_finish</code></a></li>
+<li><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/ip_input.c#L187"><code>ip_protocol_deliver_rcu</code></a></li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">ip_protocol_deliver_rcu</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> protocol)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">net_protocol</span> *<span class="title">ipprot</span>;</span></span><br><span class="line">	<span class="type">int</span> raw, ret;</span><br><span class="line"></span><br><span class="line">resubmit:</span><br><span class="line">	raw = raw_local_deliver(skb, protocol);</span><br><span class="line">	<span class="comment">// CC-NET 根据ip协议字段找到handler处理</span></span><br><span class="line">	ipprot = rcu_dereference(inet_protos[protocol]);</span><br><span class="line">	<span class="keyword">if</span> (ipprot) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!ipprot-&gt;no_policy) &#123;</span><br><span class="line">			<span class="keyword">if</span> (!xfrm4_policy_check(<span class="literal">NULL</span>, XFRM_POLICY_IN, skb)) &#123;</span><br><span class="line">				kfree_skb_reason(skb,</span><br><span class="line">						 SKB_DROP_REASON_XFRM_POLICY);</span><br><span class="line">				<span class="keyword">return</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			nf_reset_ct(skb);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// call 入传输层</span></span><br><span class="line">		ret = INDIRECT_CALL_2(ipprot-&gt;handler, tcp_v4_rcv, udp_rcv,</span><br><span class="line">				      skb);</span><br><span class="line">		<span class="keyword">if</span> (ret &lt; <span class="number">0</span>) &#123;</span><br><span class="line">			protocol = -ret;</span><br><span class="line">			<span class="keyword">goto</span> resubmit;</span><br><span class="line">		&#125;</span><br><span class="line">		__IP_INC_STATS(net, IPSTATS_MIB_INDELIVERS);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> (!raw) &#123;</span><br><span class="line">			<span class="keyword">if</span> (xfrm4_policy_check(<span class="literal">NULL</span>, XFRM_POLICY_IN, skb)) &#123;</span><br><span class="line">				__IP_INC_STATS(net, IPSTATS_MIB_INUNKNOWNPROTOS);</span><br><span class="line">				icmp_send(skb, ICMP_DEST_UNREACH,</span><br><span class="line">					  ICMP_PROT_UNREACH, <span class="number">0</span>);</span><br><span class="line">			&#125;</span><br><span class="line">			kfree_skb_reason(skb, SKB_DROP_REASON_IP_NOPROTO);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			__IP_INC_STATS(net, IPSTATS_MIB_INDELIVERS);</span><br><span class="line">			consume_skb(skb);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="传输层">传输层</h3>
+<p><a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/tcp_ipv4.c#L1982">tcp_ipv4.c</a></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// [af_inet.c ](https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/af_inet.c#L1741)</span></span><br><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">net_protocol</span> <span class="title">tcp_protocol</span> =</span> &#123;</span><br><span class="line">	.handler	=	tcp_v4_rcv,</span><br><span class="line">	.err_handler	=	tcp_v4_err,</span><br><span class="line">	.no_policy	=	<span class="number">1</span>,</span><br><span class="line">	.icmp_strict_tag_validation = <span class="number">1</span>,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>注册 tcp 回调，IP层根据protocol type回调传输层handler</p>
+<h2 id="udp-send">udp send</h2>
+<p><img src="/assets/2023-10-31-21.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="udp-receive">udp receive</h2>
+<p>UDP sock receive<br>
+<img src="/assets/2023-10-23-16-51-11.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="tcp-send">tcp  send</h2>
+<p>tcp connect<br>
+<img src="/assets/2023-10-31-22.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>tcp sendmsg<br>
+<img src="/assets/2023-10-31-23.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="tcp-receive">tcp receive</h2>
+<p>tcp rev + tcp syn send</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line">__dev_xmit_skb (\root\codes\kernel-dev\linux\net\core\dev.c:3760)</span><br><span class="line">__dev_queue_xmit (\root\codes\kernel-dev\linux\net\core\dev.c:4310)</span><br><span class="line">dev_queue_xmit (\root\codes\kernel-dev\linux\include\linux\netdevice.h:3082)</span><br><span class="line">neigh_hh_output (\root\codes\kernel-dev\linux\include\net\neighbour.h:529)</span><br><span class="line">neigh_output (\root\codes\kernel-dev\linux\include\net\neighbour.h:543)</span><br><span class="line">ip_finish_output2 (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:238)</span><br><span class="line">__ip_finish_output (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:0)</span><br><span class="line">NF_HOOK_COND (\root\codes\kernel-dev\linux\include\linux\netfilter.h:293)</span><br><span class="line">ip_output (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:439)</span><br><span class="line">dst_output (\root\codes\kernel-dev\linux\include\net\dst.h:458)</span><br><span class="line">ip_local_out (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:128)</span><br><span class="line">__ip_queue_xmit (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:543)</span><br><span class="line">ip_queue_xmit (\root\codes\kernel-dev\linux\net\ipv4\ip_output.c:557)</span><br><span class="line">__tcp_transmit_skb (\root\codes\kernel-dev\linux\net\ipv4\tcp_output.c:1415)</span><br><span class="line">__tcp_send_ack (\root\codes\kernel-dev\linux\net\ipv4\tcp_output.c:4082)</span><br><span class="line">tcp_send_ack (\root\codes\kernel-dev\linux\net\ipv4\tcp_output.c:4088)</span><br><span class="line">tcp_rcv_synsent_state_process (\root\codes\kernel-dev\linux\net\ipv4\tcp_input.c:6363)</span><br><span class="line">tcp_rcv_state_process (\root\codes\kernel-dev\linux\net\ipv4\tcp_input.c:6539)</span><br><span class="line">tcp_v4_do_rcv (\root\codes\kernel-dev\linux\net\ipv4\tcp_ipv4.c:1751)</span><br><span class="line">tcp_v4_rcv (\root\codes\kernel-dev\linux\net\ipv4\tcp_ipv4.c:2150)</span><br><span class="line">ip_protocol_deliver_rcu (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:205)</span><br><span class="line">ip_local_deliver_finish (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:233)</span><br><span class="line">NF_HOOK (\root\codes\kernel-dev\linux\include\linux\netfilter.h:304)</span><br><span class="line">ip_local_deliver (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:254)</span><br><span class="line">dst_input (\root\codes\kernel-dev\linux\include\net\dst.h:468)</span><br><span class="line">ip_sublist_rcv_finish (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:580)</span><br><span class="line">ip_list_rcv_finish (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:631)</span><br><span class="line">ip_sublist_rcv (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:639)</span><br><span class="line">ip_list_rcv (\root\codes\kernel-dev\linux\net\ipv4\ip_input.c:674)</span><br><span class="line">__netif_receive_skb_list_ptype (\root\codes\kernel-dev\linux\net\core\dev.c:5570)</span><br><span class="line">__netif_receive_skb_list_core (\root\codes\kernel-dev\linux\net\core\dev.c:5618)</span><br><span class="line">__netif_receive_skb_list (\root\codes\kernel-dev\linux\net\core\dev.c:5670)</span><br><span class="line">netif_receive_skb_list_internal (\root\codes\kernel-dev\linux\net\core\dev.c:5761)</span><br><span class="line">gro_normal_list (\root\codes\kernel-dev\linux\include\net\gro.h:439)</span><br><span class="line">napi_complete_done (\root\codes\kernel-dev\linux\net\core\dev.c:6101)</span><br><span class="line">e1000_clean (\root\codes\kernel-dev\linux\drivers\net\ethernet\intel\e1000\e1000_main.c:3811)</span><br><span class="line">__napi_poll (\root\codes\kernel-dev\linux\net\core\dev.c:6531)</span><br><span class="line">napi_poll (\root\codes\kernel-dev\linux\net\core\dev.c:6598)</span><br><span class="line">net_rx_action (\root\codes\kernel-dev\linux\net\core\dev.c:6731)</span><br><span class="line">__do_softirq (\root\codes\kernel-dev\linux\kernel\softirq.c:553)</span><br><span class="line">invoke_softirq (\root\codes\kernel-dev\linux\kernel\softirq.c:427)</span><br><span class="line">__irq_exit_rcu (\root\codes\kernel-dev\linux\kernel\softirq.c:632)</span><br><span class="line">irq_exit_rcu (\root\codes\kernel-dev\linux\kernel\softirq.c:644)</span><br><span class="line">sysvec_apic_timer_interrupt (\root\codes\kernel-dev\linux\arch\x86\kernel\apic\apic.c:1074)</span><br></pre></td></tr></table></figure>
+<p><img src="/assets/2023-10-23-16-52-49.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="netfilter-hook">netfilter hook</h2>
+<p>入口点</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span></span><br><span class="line"><span class="title function_">NF_HOOK</span><span class="params">(<span class="type">uint8_t</span> pf, <span class="type">unsigned</span> <span class="type">int</span> hook, <span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">	<span class="keyword">struct</span> net_device *in, <span class="keyword">struct</span> net_device *out,</span></span><br><span class="line"><span class="params">	<span class="type">int</span> (*okfn)(<span class="keyword">struct</span> net *, <span class="keyword">struct</span> sock *, <span class="keyword">struct</span> sk_buff *))</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// 调用netfilter预定义的hook，如果ret时，回调下一阶段的函数（即允许包通过）</span></span><br><span class="line">	<span class="type">int</span> ret = nf_hook(pf, hook, net, sk, skb, in, out, okfn);</span><br><span class="line">	<span class="keyword">if</span> (ret == <span class="number">1</span>)</span><br><span class="line">		ret = okfn(net, sk, skb);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="数据包流">数据包流</h2>
+<p>通常在协议栈有很多的决策点，根据不同的条件调用C的各种函数回调，将包送到不同的路径。</p>
+<p>绿色部分是和路由相关的两个分流点。</p>
+<ol>
+<li>dst_input: 根据routing结果决定packet是local还是forward</li>
+<li>dst_output: 根据<code>skb_dst(skb)-&gt;output</code>不同值，决定如何调用三层协议发送</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Output packet to network from transport.  */</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">dst_output</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> INDIRECT_CALL_INET(skb_dst(skb)-&gt;output,</span><br><span class="line">				  ip6_output, ip_output,</span><br><span class="line">				  net, sk, skb);</span><br></pre></td></tr></table></figure>
+<p>下图还针对收包展示了两个分流点。</p>
+<ol>
+<li><code>deliver_skb</code>: 根据链路层Type字段区分三层协议，IPv4, IPv6, ARP等等。</li>
+<li>如果三层是IP协议，通过<code>iphdr-&gt;protocol</code>字段区分传输层协议TCP，UDP<br>
+<a target="_blank" rel="noopener" href="https://github.com/torvalds/linux/blob/v6.6-rc6/net/ipv4/ip_input.c#L205">回调handler</a></li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ret = INDIRECT_CALL_2(ipprot-&gt;handler, tcp_v4_rcv, udp_rcv,</span><br><span class="line">				      skb);</span><br></pre></td></tr></table></figure>
+<p><img src="/assets/2023-10-31-18.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p>追踪<code>skb-&gt;_skb_refdst</code>代表的 <code>dst_entry *</code> 结构变化，展示packet收到后的处理流程</p>
+</blockquote>
+<p>从图的左下角看起</p>
+<p>数据包可以一个个处理</p>
+<blockquote>
+<p><code>__netif_receive_skb</code> -&gt; <code>deliver_skb</code></p>
+</blockquote>
+<p>也可以作为lists一同处理</p>
+<blockquote>
+<p><code>__netif_receive_skb_list</code> -&gt; <code>netif_receive_skb_list_ptype</code></p>
+</blockquote>
+<p><img src="/assets/2023-10-31-19.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p>两种处理方式最后都回调上层 non-list 或者 list 的 handler</p>
+<p>ipv4 的 handler 在init阶段注册<a target="_blank" rel="noopener" href="https://elixir.bootlin.com/linux/v6.6-rc6/source/net/ipv4/af_inet.c#L2051">inet_init</a></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">ipfrag_init();</span><br><span class="line"></span><br><span class="line">dev_add_pack(&amp;ip_packet_type);</span><br><span class="line"></span><br><span class="line">ip_tunnel_core_init();</span><br></pre></td></tr></table></figure>
+<p>协议分发利用<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/EtherType">EtherType - Wikipedia</a>字段，通过hashtable查找handle，ipv4的两个回调函数分别为 <code>ip_rcv</code>和 <code>ip_list_rcv</code>。</p>
+<p>一到达网络层，首先进行 <em>Netfilter Prerouting</em>，如果没有被丢弃，继续调用</p>
+<ol>
+<li><code>ip_rcv_finish/ip_list_rcv_finish</code></li>
+<li><code>ip_rcv_finish_core</code><br>
+没有list版本，每个skb单独调用。开始routing<br>
+<img src="/assets/2023-10-31-20.png" alt="" style="max-width: 400px;width: 100%;"></li>
+</ol>
+<h2 id="参考">参考</h2>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://thermalcircle.de/doku.php?id=blog:linux:routing_decisions_in_the_linux_kernel_1_lookup_packet_flow">Routing Decisions in the Linux Kernel - Part 1: Lookup and packet flow</a><br>
+<a target="_blank" rel="noopener" href="https://wiki.linuxfoundation.org/networking/kernel_flow#receive-flow">networking:kernel_flow [Wiki]</a><br>
+<a target="_blank" rel="noopener" href="https://arthurchiao.art/blog/linux-net-stack-implementation-rx-zh">Linux 网络栈接收数据（RX）：原理及内核实现（2022）</a></p>
+</blockquote>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Kernel/" rel="tag"># Kernel</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/08/18/59/" rel="prev" title="Nginx 代码分析">
+      <i class="fa fa-chevron-left"></i> Nginx 代码分析
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2023/11/03/61/" rel="next" title="Kernel-Net">
+      Kernel-Net <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A9%B1%E5%8A%A8%E5%B1%82"><span class="nav-number">1.</span> <span class="nav-text">驱动层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#NAPI"><span class="nav-number">1.1.</span> <span class="nav-text">NAPI</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%86%85%E6%A0%B8%E7%BD%91%E7%BB%9C%E5%B1%82"><span class="nav-number">2.</span> <span class="nav-text">内核网络层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#IP-%E5%B1%82"><span class="nav-number">2.1.</span> <span class="nav-text">IP 层</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%B7%AF%E7%94%B1%E9%80%89%E6%8B%A9"><span class="nav-number">2.1.1.</span> <span class="nav-text">路由选择</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#struct-rtable"><span class="nav-number">2.1.2.</span> <span class="nav-text">struct rtable</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#struct-dst-entry"><span class="nav-number">2.1.3.</span> <span class="nav-text">struct dst_entry</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ip-forward"><span class="nav-number">2.1.4.</span> <span class="nav-text">ip_forward</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ip-local-deliver"><span class="nav-number">2.1.5.</span> <span class="nav-text">ip_local_deliver</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BC%A0%E8%BE%93%E5%B1%82"><span class="nav-number">2.2.</span> <span class="nav-text">传输层</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#udp-send"><span class="nav-number">3.</span> <span class="nav-text">udp send</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#udp-receive"><span class="nav-number">4.</span> <span class="nav-text">udp receive</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#tcp-send"><span class="nav-number">5.</span> <span class="nav-text">tcp  send</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#tcp-receive"><span class="nav-number">6.</span> <span class="nav-text">tcp receive</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#netfilter-hook"><span class="nav-number">7.</span> <span class="nav-text">netfilter hook</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%8C%85%E6%B5%81"><span class="nav-number">8.</span> <span class="nav-text">数据包流</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83"><span class="nav-number">9.</span> <span class="nav-text">参考</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="Rust中的状态机实现 我概括一下，引入 Future 必须解决自引用被swap的问题 Pin通过 提供 &amp;Self 来让编译器进行入参检查，mem::swap(&amp; mut self) 需要 mut 类型，所以编译器类型检查失败而退出  https:&#x2F;&#x2F;rust-lang.github.io&#x2F;async-book&#x2F;04_pinning&#x2F;01_chapter.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Async状态机实现">
+<meta property="og:url" content="http://www.chaochaogege.com/2021/06/18/55/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="Rust中的状态机实现 我概括一下，引入 Future 必须解决自引用被swap的问题 Pin通过 提供 &amp;Self 来让编译器进行入参检查，mem::swap(&amp; mut self) 需要 mut 类型，所以编译器类型检查失败而退出  https:&#x2F;&#x2F;rust-lang.github.io&#x2F;async-book&#x2F;04_pinning&#x2F;01_chapter.html">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-06-18T00:00:00.000Z">
+<meta property="article:modified_time" content="2023-12-19T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="Rust">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2021/06/18/55/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Async状态机实现 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2021/06/18/55/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Async状态机实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-06-18 00:00:00" itemprop="dateCreated datePublished" datetime="2021-06-18T00:00:00+00:00">2021-06-18</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2023-12-19 00:00:00" itemprop="dateModified" datetime="2023-12-19T00:00:00+00:00">2023-12-19</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="Rust中的状态机实现">Rust中的状态机实现</h2>
+<p>我概括一下，引入 Future 必须解决自引用被swap的问题</p>
+<p>Pin通过 提供 &amp;Self 来让编译器进行入参检查，mem::swap(&amp; mut self) 需要 mut 类型，所以编译器类型检查失败而退出</p>
+<p><a target="_blank" rel="noopener" href="https://cloud.tencent.com/developer/article/1628311"></a></p>
+<p><a target="_blank" rel="noopener" href="https://rust-lang.github.io/async-book/04_pinning/01_chapter.html">https://rust-lang.github.io/async-book/04_pinning/01_chapter.html</a></p>
+<p>Future 任务会跨越线程执行，我们知道Future可以编译成状态机yield执行，那在从Future Pending 到 Done 的过程中需要将全部的状态统一保存起来。</p>
+<p>这里最好的办法是 struct，也即 async 中所有的变量都在 struct 上分配，并通过self引用。</p>
+<p>整个 Future 执行期间全部的变量都通过 enum 进行保存。</p>
+<h2 id="Future-是如何保存执行状态的？">Future 是如何保存执行状态的？</h2>
+<p>编译之前</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::future::Future;</span><br><span class="line"><span class="keyword">use</span> std::pin::Pin;</span><br><span class="line"><span class="keyword">use</span> std::task::&#123;Context, Poll&#125;;</span><br><span class="line"><span class="keyword">use</span> std::time::&#123;Duration, Instant&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">Delay</span> &#123;</span><br><span class="line">    when: Instant,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> <span class="title class_">Future</span> <span class="keyword">for</span> <span class="title class_">Delay</span> &#123;</span><br><span class="line">    <span class="keyword">type</span> <span class="title class_">Output</span> = &amp;<span class="symbol">&#x27;static</span> <span class="type">str</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">fn</span> <span class="title function_">poll</span>(<span class="keyword">self</span>: Pin&lt;&amp;<span class="keyword">mut</span> <span class="keyword">Self</span>&gt;, cx: &amp;<span class="keyword">mut</span> Context&lt;<span class="symbol">&#x27;_</span>&gt;)</span><br><span class="line">        <span class="punctuation">-&gt;</span> Poll&lt;&amp;<span class="symbol">&#x27;static</span> <span class="type">str</span>&gt;</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">if</span> Instant::<span class="title function_ invoke__">now</span>() &gt;= <span class="keyword">self</span>.when &#123;</span><br><span class="line">            <span class="built_in">println!</span>(<span class="string">&quot;Hello world&quot;</span>);</span><br><span class="line">            Poll::<span class="title function_ invoke__">Ready</span>(<span class="string">&quot;done&quot;</span>)</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">// Ignore this line for now.</span></span><br><span class="line">            cx.<span class="title function_ invoke__">waker</span>().<span class="title function_ invoke__">wake_by_ref</span>();</span><br><span class="line">            Poll::Pending</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#[tokio::main]</span></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">fn</span> <span class="title function_">main</span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">when</span> = Instant::<span class="title function_ invoke__">now</span>() + Duration::<span class="title function_ invoke__">from_millis</span>(<span class="number">10</span>);</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">future</span> = Delay &#123; when &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">let</span> <span class="variable">out</span> = future.<span class="keyword">await</span>;</span><br><span class="line">    <span class="built_in">assert_eq!</span>(out, <span class="string">&quot;done&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>编译之后</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::future::Future;</span><br><span class="line"><span class="keyword">use</span> std::pin::Pin;</span><br><span class="line"><span class="keyword">use</span> std::task::&#123;Context, Poll&#125;;</span><br><span class="line"><span class="keyword">use</span> std::time::&#123;Duration, Instant&#125;;</span><br><span class="line"><span class="comment">// 每次返回的Future都会存放到 enum 结构体中。这样在Future未结束之前Future会在 enum 持久化</span></span><br><span class="line"><span class="keyword">enum</span> <span class="title class_">MainFuture</span> &#123;</span><br><span class="line">    <span class="comment">// Initialized, never polled</span></span><br><span class="line">    State0,</span><br><span class="line">    <span class="comment">// Waiting on `Delay`, i.e. the `future.await` line.</span></span><br><span class="line">    <span class="title function_ invoke__">State1</span>(Delay),</span><br><span class="line">    <span class="comment">// The future has completed.</span></span><br><span class="line">    Terminated,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> <span class="title class_">Future</span> <span class="keyword">for</span> <span class="title class_">MainFuture</span> &#123;</span><br><span class="line">    <span class="keyword">type</span> <span class="title class_">Output</span> = ();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">fn</span> <span class="title function_">poll</span>(<span class="keyword">mut</span> <span class="keyword">self</span>: Pin&lt;&amp;<span class="keyword">mut</span> <span class="keyword">Self</span>&gt;, cx: &amp;<span class="keyword">mut</span> Context&lt;<span class="symbol">&#x27;_</span>&gt;)</span><br><span class="line">        <span class="punctuation">-&gt;</span> Poll&lt;()&gt;</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">use</span> MainFuture::*;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">loop</span> &#123;</span><br><span class="line">            <span class="keyword">match</span> *<span class="keyword">self</span> &#123;</span><br><span class="line">                State0 =&gt; &#123;</span><br><span class="line">                    <span class="comment">// 这些代码并不会执行多次</span></span><br><span class="line">                    <span class="comment">// https://discord.com/channels/500028886025895936/500336333500448798/854955299522084914</span></span><br><span class="line">                    <span class="keyword">let</span> <span class="variable">when</span> = Instant::<span class="title function_ invoke__">now</span>() +</span><br><span class="line">                        Duration::<span class="title function_ invoke__">from_millis</span>(<span class="number">10</span>);</span><br><span class="line">                        <span class="comment">// 看编译前的代码</span></span><br><span class="line">                        <span class="comment">// 由于when在.await使用，编译器自动将when保存到enum</span></span><br><span class="line">                        <span class="comment">// 所以不用担心async function调用返回后stack里的变量没了</span></span><br><span class="line">                        <span class="comment">// 编译器会分析出来，帮你处理</span></span><br><span class="line">                    <span class="keyword">let</span> <span class="variable">future</span> = Delay &#123; when &#125;;</span><br><span class="line">                    *<span class="keyword">self</span> = <span class="title function_ invoke__">State1</span>(future);</span><br><span class="line">                &#125;</span><br><span class="line">                <span class="title function_ invoke__">State1</span>(<span class="keyword">ref</span> <span class="keyword">mut</span> my_future) =&gt; &#123;</span><br><span class="line">                    <span class="keyword">match</span> Pin::<span class="title function_ invoke__">new</span>(my_future).<span class="title function_ invoke__">poll</span>(cx) &#123;</span><br><span class="line">                        Poll::<span class="title function_ invoke__">Ready</span>(out) =&gt; &#123;</span><br><span class="line">                            <span class="built_in">assert_eq!</span>(out, <span class="string">&quot;done&quot;</span>);</span><br><span class="line">                            *<span class="keyword">self</span> = Terminated;</span><br><span class="line">                            <span class="keyword">return</span> Poll::<span class="title function_ invoke__">Ready</span>(());</span><br><span class="line">                        &#125;</span><br><span class="line">                        Poll::Pending =&gt; &#123;</span><br><span class="line">                            <span class="keyword">return</span> Poll::Pending;</span><br><span class="line">                        &#125;</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line">                Terminated =&gt; &#123;</span><br><span class="line">                    <span class="built_in">panic!</span>(<span class="string">&quot;future polled after completion&quot;</span>)</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>比如如下async代码块</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">x</span> = [<span class="number">0</span>; <span class="number">128</span>];</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">read_into_buf_fut</span> = <span class="title function_ invoke__">read_into_buf</span>(&amp;<span class="keyword">mut</span> x);</span><br><span class="line">    read_into_buf_fut.<span class="keyword">await</span>;</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;:?&#125;&quot;</span>, x);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>下面是desugar的代码</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">AsyncFuture</span> &#123;</span><br><span class="line">    x: [<span class="type">u8</span>; <span class="number">128</span>],</span><br><span class="line">    read_into_buf_fut: ReadIntoBuf</span><br><span class="line">    state: State,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">enum</span> <span class="title class_">State</span> &#123; </span><br><span class="line">    Start, </span><br><span class="line">    AwaitingReadIntoBuf, </span><br><span class="line">    Done</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">ReadIntoBuf</span> &#123;</span><br><span class="line">    buf: &amp;<span class="symbol">&#x27;a</span> <span class="keyword">mut</span> [<span class="type">u8</span>] <span class="comment">// 可能被实现为原始指针，这儿只是为了方便描述</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>会被rustc编译成Future对象，并且跨.await的变量被封装到struct保存，通过生成state维护状态机的状态</p>
+<p>并不是全部的local variable 都会被保存，rustc只会保存await需要的变量，这些变量特点是await返回后就会被销毁，所以需要保存到struct</p>
+<p><a target="_blank" rel="noopener" href="https://discord.com/channels/500028886025895936/500336333500448798/854955299522084914">https://discord.com/channels/500028886025895936/500336333500448798/854955299522084914</a></p>
+<p>由于保存变量状态， poll 中获得这状态通过变量引用访问，所以struct往往会保存变量的引用，这就使得 future 不能被移动，所以编译器会为生成的 future 状态机增加 PhantomPinned，使得 future 是 !Unpin</p>
+<p><a target="_blank" rel="noopener" href="https://os.phil-opp.com/async-await/#pinning-and-futures">https://os.phil-opp.com/async-await/#pinning-and-futures</a></p>
+<p><a target="_blank" rel="noopener" href="https://www.reddit.com/r/learnrust/comments/fkvr15/why_cant_an_async_block_or_fn_implement_unpin/">https://www.reddit.com/r/learnrust/comments/fkvr15/why_cant_an_async_block_or_fn_implement_unpin/</a></p>
+<p>也正是由于 future !Unpin，为了再次 poll 这个future，必须重新 Pin 住</p>
+<p>所以 shadowsocks-rust 这里重新Pin住</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/willdeeper/shadowsocks-rust/blob/6ff4f5b04b8e22d36cd54477cfcadf8cb403de21/bin/sslocal.rs#L463">https://github.com/willdeeper/shadowsocks-rust/blob/6ff4f5b04b8e22d36cd54477cfcadf8cb403de21/bin/sslocal.rs#L463</a></p>
+<p>虽然看着 server 是 stack local，但 async 会将其保存到 struct，确保pin的整个过程中server始终存在。</p>
+<p><a target="_blank" rel="noopener" href="https://os.phil-opp.com/async-await/#stack-pinning-and-pin-mut-t">https://os.phil-opp.com/async-await/#stack-pinning-and-pin-mut-t</a></p>
+<p>Future 可能会出现自引用结构，比如 <code>https://os.phil-opp.com/async-await/#self-referential-structs</code>，在<code>await</code>之后获取了array的引用。这种情况下future move会出问题</p>
+<p><a target="_blank" rel="noopener" href="https://os.phil-opp.com/async-await/#pinning-and-futures">https://os.phil-opp.com/async-await/#pinning-and-futures</a></p>
+<blockquote>
+<p>The reason that this method takes self: Pin&lt;&amp;mut Self&gt; instead of the normal &amp;mut self is that future instances created from async/await are often self-referential, as we saw above. By wrapping Self into Pin and letting the compiler opt-out of Unpin for self-referential futures generated from async/await, it is guaranteed that the futures are not moved in memory between poll calls</p>
+</blockquote>
+<hr>
+<p><a target="_blank" rel="noopener" href="https://os.phil-opp.com/async-await/#saving-state-1">https://os.phil-opp.com/async-await/#saving-state-1</a></p>
+<blockquote>
+<p>Language-supported implementations of cooperative tasks are often even able to backup up the required parts of the call stack before pausing. As an example, <strong>Rust’s async/await implementation stores all local variables that are still needed in an automatically generated struct</strong></p>
+</blockquote>
+<hr>
+<p>Rust没找到在线编辑器看编译后的代码，但stackless理论中，js和rust最接近，后面不不明白，可以看js编译后是如何利用函数闭包保存状态的</p>
+<p><a target="_blank" rel="noopener" href="https://babeljs.io/repl#?browsers=defaults%2C%20not%20ie%2011%2C%20not%20ie_mob%2011&amp;build=&amp;builtIns=false&amp;corejs=3.21&amp;spec=false&amp;loose=false&amp;code_lz=NwCghgzgngdgxgAgGYFd4BcCWB7GCQCUCA3gFACQqGOeEANgKYMAOIAthEWQj7wE4N0KPnhgMA7ggAKfbG0wQGIARGx0AbgwQBeAHwJF6ACqY2DbCnTKGqjQwA0CDgQLBSvBAF9S73pFiIVHBYuAgAJgxs2IQkvh5wuLYMAHR02ADmIABEHOkAjFmucbwJMBDoCGA6CACsbh48APSNCICb8YAziYD0ZmDiYJjogNJygLJKxTyMFQBG1T19FfRMrHkADCtFDQjNbV0z_QOAcCo-65uAF7GVvf0IgKj6gBSugGFyYKMbLYDQ7oBo_oCL0YBfioAhboDHcoCAHoAgBiqgGqIwC3qYBQZUAgDqACnVAL-KgAdTQAA5oAoOUAQjqPTatQDsFoB75UAp3KAXflABragDanQCABoBD-UA9gaYlqAZX1EYBYxUAhNYgwDAMdc6QhAFjygH3YwDxaQZxP04AALBCAbfjAKaKgGg5QAAcoAqOQp3JhgBdTRWVaDwBCIwC0coAYf8AvmGANkdAFiaLM5Z1mCEA_vKAdP1_DrymA4ABrQAr8YA9tW5gDF5CmAac1ABN-gF-EmFBEIwb6QvUk7mywBG6a1AKfKgF3owCBkYAG6MA8vLcp2IF3uwBueoBYOU6gEQjQA3coAOPUAL9HfRGcwAQFgbAJwWgBpzQCMOmXG1yji0PoALNR5gDsPQkfH4AknwhGQwCADAwYCg2HP0HwUMFHqUkqkMtlcgAmABcCCyCAA1JU1rxvMUdhUIlFCG5PARn0A&amp;debug=false&amp;forceAllTransforms=false&amp;modules=false&amp;shippedProposals=false&amp;circleciRepo=&amp;evaluate=false&amp;fileSize=false&amp;timeTravel=false&amp;sourceType=module&amp;lineWrap=true&amp;presets=react%2Cstage-2&amp;prettier=false&amp;targets=&amp;version=7.23.6&amp;externalPlugins=%40babel%2Fplugin-transform-regenerator%407.23.3&amp;assumptions=%7B%7D">js async编译后的状态机</a></p>
+<h2 id="为什么说-Pin-是零开销？">为什么说 Pin 是零开销？</h2>
+<p>Pin! 的内容会分配到堆上防止移动，对于自引用结构为了防止移动一定会内存<strong>分配到堆上</strong>，零开销的意思是不会进行<strong>多余的</strong>堆分配。</p>
+<p>mem::swap 要求 参数为 <code>&amp;mut T</code>，只要我们保证不泄漏出 mut 就可保证用户代码不会 move 内存造成<strong>不安全编程</strong></p>
+<p>除非显式 !Unpin， 否则编译器会自动实现Unpin，也就是Rust里默认变量是可以移动的</p>
+<p>比如下面这代码<br>
+<a target="_blank" rel="noopener" href="https://play.rust-lang.org/?version=stable&amp;mode=debug&amp;edition=2018&amp;gist=636b71d4acef346a9ce810b735908cb1">https://play.rust-lang.org/?version=stable&amp;mode=debug&amp;edition=2018&amp;gist=636b71d4acef346a9ce810b735908cb1</a></p>
+<p><a target="_blank" rel="noopener" href="https://stackoverflow.com/a/49917903/7529562">https://stackoverflow.com/a/49917903/7529562</a></p>
+<h2 id="Javascript-Promise-和-Rust-Future-的不同">Javascript Promise 和 Rust Future 的不同</h2>
+<p>JavaScript 的 Promise 调用可能会返回新的 Promise，而Rust的Future只会返回 Pending 或 Ready，并不会返回新的 Future</p>
+<p>Future在Rust中是块写法</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">thread::<span class="title function_ invoke__">spawn</span>(<span class="keyword">async</span> &#123;</span><br><span class="line"></span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<p>这 async 编译为 Future，Future::poll返回 <code>Pending / Ready</code>，想孵化新的异步任务需调用运行时提供的孵化方法，而不是通过返回 Future</p>
+<figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">tokio::<span class="title function_ invoke__">spawn</span>(<span class="keyword">async</span> &#123;</span><br><span class="line">    <span class="comment">// spawn 孵化新的Future</span></span><br><span class="line">    <span class="keyword">let</span> <span class="variable">join_hander</span> = tokio::<span class="title function_ invoke__">spawn</span>(<span class="keyword">async</span> &#123;</span><br><span class="line"></span><br><span class="line">    &#125;);</span><br><span class="line">    <span class="comment">// future#poll 会先返回 join_hander 的完成状态</span></span><br><span class="line">    join_hander.<span class="keyword">await</span>?;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<h2 id="JS中的状态机">JS中的状态机</h2>
+<p>我将用 Javascript 来演示 async 如何实现。 async 原理类似 C# 的 async Task，Rust中的 ?. Future</p>
+<p>async 本质是依赖 回调函数</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="keyword">function</span> <span class="title function_">fetchDataFromRemote</span>(<span class="params">path</span>) &#123;</span><br><span class="line">    <span class="keyword">const</span> url = <span class="string">&#x27;https://&#x27;</span> + path;</span><br><span class="line">    <span class="keyword">const</span> r1 = <span class="keyword">await</span> api.<span class="title function_">get</span>(url)</span><br><span class="line">    <span class="keyword">const</span> r2 = <span class="keyword">await</span> api.<span class="title function_">getFrom</span>(url)</span><br><span class="line">    <span class="keyword">return</span> [r1,r2]</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> data = <span class="keyword">await</span> <span class="title function_">fetchDataFromRemote</span>(<span class="string">&#x27;api.github.com/repos/tokio-rs/mini-redis/languages&#x27;</span>)</span><br></pre></td></tr></table></figure>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="title function_">fetchDateFromRemote</span>(<span class="params"></span>) &#123;</span><br><span class="line">    <span class="keyword">const</span> url = <span class="string">&#x27;https://&#x27;</span> + path;</span><br><span class="line">    <span class="keyword">let</span> state = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">let</span> finalState = <span class="number">2</span>;</span><br><span class="line">    <span class="keyword">let</span> waitFor = <span class="literal">null</span></span><br><span class="line">    <span class="keyword">switch</span>(state) &#123;</span><br><span class="line">        <span class="keyword">case</span> <span class="number">0</span>: &#123;</span><br><span class="line">            waitFor = api.<span class="title function_">get</span>(url);</span><br><span class="line">            <span class="keyword">return</span> waitFor;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>又或者下面从babel拷贝过来的代码</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="keyword">function</span> <span class="title function_">getActive</span>(<span class="params">keyId: string</span>) &#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">typeof</span> itemId === <span class="string">&#x27;string&#x27;</span>) &#123;</span><br><span class="line">        <span class="keyword">const</span> r = <span class="keyword">await</span> (<span class="keyword">await</span> api.<span class="property">items</span>.<span class="title function_">get</span>(keyId, itemId)).<span class="property">data</span>;</span><br><span class="line">        <span class="title function_">setDefault</span>(r.<span class="property">value</span>);</span><br><span class="line">        <span class="title function_">setFields</span>(&#123;</span><br><span class="line">            <span class="attr">key</span>: <span class="string">&#x27;value&#x27;</span>,</span><br><span class="line">            <span class="attr">value</span>: r.<span class="property">value</span></span><br><span class="line">        &#125;);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">const</span> k = <span class="keyword">await</span> (<span class="keyword">await</span> api.<span class="property">keys</span>.<span class="title function_">get</span>(keyId)).<span class="property">data</span>;</span><br><span class="line">    <span class="keyword">if</span> (<span class="title class_">Number</span>.<span class="built_in">parseInt</span>(k?.<span class="property">active</span>) !== -<span class="number">1</span>) &#123;</span><br><span class="line">        <span class="keyword">const</span> active_item = <span class="keyword">await</span> (<span class="keyword">await</span> api.<span class="property">items</span>.<span class="title function_">get</span>(keyId, itemId)).<span class="property">data</span></span><br><span class="line">        </span><br><span class="line">        <span class="title function_">setDefault</span>(active_item.<span class="property">value</span>);</span><br><span class="line">        <span class="title function_">setFields</span>(&#123;</span><br><span class="line">            <span class="attr">key</span>: <span class="string">&#x27;value&#x27;</span>,</span><br><span class="line">            <span class="attr">value</span>: active_item.<span class="property">value</span></span><br><span class="line">        &#125;);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">function</span> <span class="title function_">getActive</span>(<span class="params">keyId</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="title function_">__awaiter</span>(<span class="variable language_">this</span>, <span class="keyword">void</span> <span class="number">0</span>, <span class="keyword">void</span> <span class="number">0</span>, <span class="keyword">function</span> (<span class="params"></span>) &#123;</span><br><span class="line">                <span class="keyword">var</span> r, k, active_item;</span><br><span class="line">                <span class="keyword">return</span> <span class="title function_">__generator</span>(<span class="variable language_">this</span>, <span class="keyword">function</span> (<span class="params">_a</span>) &#123;</span><br><span class="line">                    <span class="keyword">switch</span> (_a.<span class="property">label</span>) &#123;</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">0</span>:</span><br><span class="line">                            <span class="keyword">if</span> (!(<span class="keyword">typeof</span> itemId === <span class="string">&#x27;string&#x27;</span>)) <span class="keyword">return</span> [<span class="number">3</span> <span class="comment">/*break*/</span>, <span class="number">3</span>];</span><br><span class="line">                            <span class="keyword">return</span> [<span class="number">4</span> <span class="comment">/*yield*/</span>, _api__WEBPACK_IMPORTED_MODULE_5__[<span class="string">&quot;default&quot;</span>].<span class="property">items</span>.<span class="title function_">get</span>(keyId, itemId)];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">1</span>: <span class="keyword">return</span> [<span class="number">4</span> <span class="comment">/*yield*/</span>, (_a.<span class="title function_">sent</span>()).<span class="property">data</span>];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">2</span>:</span><br><span class="line">                            r = _a.<span class="title function_">sent</span>();</span><br><span class="line">                            <span class="title function_">setDefault</span>(r.<span class="property">value</span>);</span><br><span class="line">                            <span class="title function_">setFields</span>(&#123;</span><br><span class="line">                                <span class="attr">key</span>: <span class="string">&#x27;value&#x27;</span>,</span><br><span class="line">                                <span class="attr">value</span>: r.<span class="property">value</span></span><br><span class="line">                            &#125;);</span><br><span class="line">                            <span class="keyword">return</span> [<span class="number">2</span> <span class="comment">/*return*/</span>];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">3</span>: <span class="keyword">return</span> [<span class="number">4</span> <span class="comment">/*yield*/</span>, _api__WEBPACK_IMPORTED_MODULE_5__[<span class="string">&quot;default&quot;</span>].<span class="property">keys</span>.<span class="title function_">get</span>(keyId)];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">4</span>: <span class="keyword">return</span> [<span class="number">4</span> <span class="comment">/*yield*/</span>, (_a.<span class="title function_">sent</span>()).<span class="property">data</span>];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">5</span>:</span><br><span class="line">                            k = _a.<span class="title function_">sent</span>();</span><br><span class="line">                            <span class="keyword">debugger</span>;</span><br><span class="line">                            <span class="keyword">if</span> (!(<span class="title class_">Number</span>.<span class="built_in">parseInt</span>(k === <span class="literal">null</span> || k === <span class="keyword">void</span> <span class="number">0</span> ? <span class="keyword">void</span> <span class="number">0</span> : k.<span class="property">active</span>) !== -<span class="number">1</span>)) <span class="keyword">return</span> [<span class="number">3</span> <span class="comment">/*break*/</span>, <span class="number">8</span>];</span><br><span class="line">                            <span class="keyword">return</span> [<span class="number">4</span> <span class="comment">/*yield*/</span>, _api__WEBPACK_IMPORTED_MODULE_5__[<span class="string">&quot;default&quot;</span>].<span class="property">items</span>.<span class="title function_">get</span>(keyId, itemId)];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">6</span>: <span class="keyword">return</span> [<span class="number">4</span> <span class="comment">/*yield*/</span>, (_a.<span class="title function_">sent</span>()).<span class="property">data</span>];</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">7</span>:</span><br><span class="line">                            active_item = _a.<span class="title function_">sent</span>();</span><br><span class="line">                            <span class="title function_">setDefault</span>(active_item.<span class="property">value</span>);</span><br><span class="line">                            <span class="title function_">setFields</span>(&#123;</span><br><span class="line">                                <span class="attr">key</span>: <span class="string">&#x27;value&#x27;</span>,</span><br><span class="line">                                <span class="attr">value</span>: active_item.<span class="property">value</span></span><br><span class="line">                            &#125;);</span><br><span class="line">                            _a.<span class="property">label</span> = <span class="number">8</span>;</span><br><span class="line">                        <span class="keyword">case</span> <span class="number">8</span>: <span class="keyword">return</span> [<span class="number">2</span> <span class="comment">/*return*/</span>];</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;);</span><br><span class="line">            &#125;);</span><br><span class="line">        &#125;</span><br></pre></td></tr></table></figure>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Rust/" rel="tag"># Rust</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/06/08/54/" rel="prev" title="Rust-Pin提出的必要性-以及我对Pin的认识">
+      <i class="fa fa-chevron-left"></i> Rust-Pin提出的必要性-以及我对Pin的认识
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/07/01/56/" rel="next" title="Rust生命周期">
+      Rust生命周期 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Rust%E4%B8%AD%E7%9A%84%E7%8A%B6%E6%80%81%E6%9C%BA%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.</span> <span class="nav-text">Rust中的状态机实现</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Future-%E6%98%AF%E5%A6%82%E4%BD%95%E4%BF%9D%E5%AD%98%E6%89%A7%E8%A1%8C%E7%8A%B6%E6%80%81%E7%9A%84%EF%BC%9F"><span class="nav-number">2.</span> <span class="nav-text">Future 是如何保存执行状态的？</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%AF%B4-Pin-%E6%98%AF%E9%9B%B6%E5%BC%80%E9%94%80%EF%BC%9F"><span class="nav-number">3.</span> <span class="nav-text">为什么说 Pin 是零开销？</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Javascript-Promise-%E5%92%8C-Rust-Future-%E7%9A%84%E4%B8%8D%E5%90%8C"><span class="nav-number">4.</span> <span class="nav-text">Javascript Promise 和 Rust Future 的不同</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#JS%E4%B8%AD%E7%9A%84%E7%8A%B6%E6%80%81%E6%9C%BA"><span class="nav-number">5.</span> <span class="nav-text">JS中的状态机</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

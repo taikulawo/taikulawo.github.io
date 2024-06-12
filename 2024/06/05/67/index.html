@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico">
+  <link rel="mask-icon" href="/favicon.ico" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"www.chaochaogege.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="前言 不管引入什么概念，什么算法，密码的核心永远不变 让原文获得密文容易，没有key的帮助反向解密出原文并正确很难 各种算法&#x2F;机制都是在加强这句话 传输安全的目标：在不可靠的信道中建立可靠通讯 传输安全的三个要素：加密+校验+基于证书的身份识别机制，缺一不可  真实数据不会被看到：需要加解密 数据不被篡改：需要完整性校验 确定对端的真实身份：防止中间人攻击">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TLS密码学">
+<meta property="og:url" content="http://www.chaochaogege.com/2024/06/05/67/index.html">
+<meta property="og:site_name" content="稳中向好">
+<meta property="og:description" content="前言 不管引入什么概念，什么算法，密码的核心永远不变 让原文获得密文容易，没有key的帮助反向解密出原文并正确很难 各种算法&#x2F;机制都是在加强这句话 传输安全的目标：在不可靠的信道中建立可靠通讯 传输安全的三个要素：加密+校验+基于证书的身份识别机制，缺一不可  真实数据不会被看到：需要加解密 数据不被篡改：需要完整性校验 确定对端的真实身份：防止中间人攻击">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-05-31.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-03-4.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-05-31-2.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-01-1.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-03-2.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-03.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-05-31-3.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-05-31-1.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-05-31-1.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-01.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-02-98.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-02-97.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-02.png">
+<meta property="og:image" content="http://www.chaochaogege.com/assets/2024-06-02-2.png">
+<meta property="article:published_time" content="2024-06-05T00:00:00.000Z">
+<meta property="article:modified_time" content="2024-06-12T00:00:00.000Z">
+<meta property="article:author" content="超超哥哥">
+<meta property="article:tag" content="net">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://www.chaochaogege.com/assets/2024-05-31.png">
+
+<link rel="canonical" href="http://www.chaochaogege.com/2024/06/05/67/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TLS密码学 | 稳中向好</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">稳中向好</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://www.chaochaogege.com/2024/06/05/67/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/favicon.ico">
+      <meta itemprop="name" content="超超哥哥">
+      <meta itemprop="description" content="好奇心">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="稳中向好">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TLS密码学
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2024-06-05 00:00:00" itemprop="dateCreated datePublished" datetime="2024-06-05T00:00:00+00:00">2024-06-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-06-12 00:00:00" itemprop="dateModified" datetime="2024-06-12T00:00:00+00:00">2024-06-12</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="前言">前言</h2>
+<p>不管引入什么概念，什么算法，密码的核心永远不变<br>
+让原文获得密文容易，没有key的帮助反向<strong>解密出原文并正确</strong>很难<br>
+各种算法/机制都是在加强这句话</p>
+<p>传输安全的目标：在不可靠的信道中建立可靠通讯</p>
+<p>传输安全的三个要素：加密+校验+基于证书的身份识别机制，缺一不可</p>
+<ul>
+<li>真实数据不会被看到：需要加解密</li>
+<li>数据不被篡改：需要完整性校验</li>
+<li>确定对端的真实身份：防止中间人攻击</li>
+</ul>
+<h2 id="对称加密-symmetric-cryptography">对称加密(symmetric cryptography)</h2>
+<p>加解密使用相同key。密文== key XOR 原文，原文==密文 XOR key</p>
+<p>分类</p>
+<ul>
+<li>分组密码(block cipher): 加解密以固定块大小为单元，不足一个块需要填充(填充)
+<ul>
+<li>熟知的算法
+<ul>
+<li>AES-CBC</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>流式密码(stream cipher):  可以加解密一个最小单元(比如字节)，像无尽的水流，无须padding数据随来随加/解
+<ul>
+<li>熟知的算法
+<ul>
+<li>RC4</li>
+<li>AES-GCM</li>
+<li>AES-CTR</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>问题：<br>
+为什么AES既可以当分组密码，又可以当流密码？<br>
+对称加密都是block cipher，所以AES是block cipher。但AES有很多模式，使得分组密码可以很容易的转成流式模式使用</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://eitca.org/cybersecurity/eitc-is-ccf-classical-cryptography-fundamentals/stream-ciphers/stream-ciphers-random-numbers-and-the-one-time-pad/a-block-cipher-can-be-easily-turned-into-a-stream-cipher-while-the-opposite-is-not-the-case/">为什么分组密码可以很容易地转换成流式密码使用？</a><br>
+A block cipher can be indeed easily turned into a stream cipher while the opposite is not the case. This is due to the fundamental differences between block ciphers and stream ciphers, as well as the properties and requirements of each.</p>
+<p>To better understand this problem, let’s first define what block ciphers and stream ciphers are. A block cipher is a cryptographic algorithm that operates on fixed-size blocks of data, typically 64 or 128 bits. It encrypts or decrypts these blocks independently, using a fixed key. Examples of block ciphers include the Data Encryption Standard (DES), Advanced Encryption Standard (AES), and Triple Data Encryption Standard (3DES).</p>
+<p>On the other hand, a <strong>stream cipher</strong> is a cryptographic algorithm that encrypts or decrypts data one bit or one byte at a time. <strong>It uses a key and a pseudorandom number generator (PRNG) to generate a stream of bits or bytes, which are then combined with the plaintext or ciphertext using an XOR operation</strong>. The resulting stream is used to encrypt or decrypt the data. Stream ciphers are often used for real-time communication and have applications in wireless networks, satellite communication, and secure voice transmission.</p>
+<p>Now, let’s delve into the reasons why a block cipher can be easily turned into a stream cipher, while the opposite is not true. One of the main reasons is that the structure and design of a block cipher inherently allow for the transformation into a stream cipher. <strong>Block ciphers are designed to operate on fixed-size blocks of data, but they can also be used in a mode called “counter mode” or “CTR mode” to generate a stream of key bits or bytes. In this mode, the block cipher is used as a PRNG, where the key and a counter value are input into the block cipher encryption function to generate the stream of key bits or bytes. This stream can then be used as the keystream in a stream cipher.</strong></p>
+<p>For example, let’s consider the AES block cipher. AES operates on 128-bit blocks and supports key sizes of 128, 192, or 256 bits. To turn AES into a stream cipher, we can use it in CTR mode. In CTR mode, we select a nonce (a unique value) and a counter value. We then encrypt the nonce concatenated with the counter using AES, and the resulting ciphertext is used as the keystream. The keystream is XORed with the plaintext to produce the ciphertext, and vice versa for decryption. By incrementing the counter value for each block of plaintext or ciphertext, we can generate a stream of key bits or bytes.</p>
+<p>On the other hand, the opposite transformation, turning a stream cipher into a block cipher, is not straightforward. Stream ciphers are designed to operate on individual bits or bytes, and their encryption and decryption processes are based on the assumption of a continuous stream of data. Block ciphers, on the other hand, require fixed-size blocks of data and operate on these blocks independently. The block cipher encryption and decryption functions are not designed to handle individual bits or bytes.</p>
+<p>If we were to try to turn a stream cipher into a block cipher, we would need to define a fixed block size and determine how to handle the encryption and decryption of individual bits or bytes within the block. This would require significant modifications to the stream cipher algorithm, potentially compromising its security and efficiency.</p>
+<p>A block cipher can be easily turned into a stream cipher by using it in counter mode, where the block cipher is used as a PRNG to generate a stream of key bits or bytes. However, the opposite transformation, turning a stream cipher into a block cipher, is not straightforward due to the inherent differences in their design and operation.</p>
+</blockquote>
+<p>理解：计数器模式下，把AES当称伪随机数生成器，</p>
+<ol>
+<li>输入 key + nonce + count 获得加密后的块以满足原文长度</li>
+<li>如果块长度不够，提升count的值并重复 step 1，源源不断生成加密块</li>
+<li>用密文与原文进行XOR运算，就能得到最后的密文</li>
+</ol>
+<h2 id="非对称加密-asymmetric-cryptography">非对称加密(asymmetric cryptography)</h2>
+<p>又称 公钥加密(Public-key cryptography)，看名称就知道，加解密由公私钥组成。<br>
+公钥加密的，只能私钥解开获得真正原文。私钥加密的，只能公钥解开获得原文</p>
+<p>具体实现</p>
+<ul>
+<li>Diffie–Hellman key exchange protocol （DH）</li>
+<li>DSS (Digital Signature Standard), which incorporates the Digital Signature Algorithm</li>
+<li>Elliptic-curve cryptography（ECC）
+<ul>
+<li>Elliptic Curve Digital Signature Algorithm (ECDSA)</li>
+<li>Elliptic-curve Diffie–Hellman (ECDH)</li>
+<li>Ed25519 and Ed448 (EdDSA)</li>
+<li>X25519 and X448 (ECDH/EdDH)</li>
+</ul>
+</li>
+<li>RSA encryption algorithm (PKCS#1)</li>
+</ul>
+<h2 id="数字签名算法-Digital-Signature-Algorithm-DSA">数字签名算法(Digital Signature Algorithm/DSA)</h2>
+<p>DSA首先是个公钥密码学体系，然后定义了一些算法套件实现数字签名能力<br>
+数字签名有签名和验签，所以DSA必须非对称加密和hash算法配合使用</p>
+<p>配对使用方式</p>
+<ol>
+<li>非对称算法（提供public/private key pair）可选</li>
+</ol>
+<ul>
+<li>ECDSA</li>
+<li>RSA</li>
+</ul>
+<ol start="2">
+<li>hash算法：提供验签能力</li>
+</ol>
+<ul>
+<li>sha-1</li>
+<li>sha-2</li>
+</ul>
+<p>注：数字签名中hash算法是必须的</p>
+<p>签名需要的材料</p>
+<ul>
+<li>private key</li>
+<li>原文</li>
+<li>hash 算法（sha-1, sha256, shaxxx）</li>
+</ul>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> &#123;</span><br><span class="line">  generateKeyPairSync,</span><br><span class="line">  createSign,</span><br><span class="line">  createVerify,</span><br><span class="line">&#125; = <span class="built_in">require</span>(<span class="string">&#x27;node:crypto&#x27;</span>);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 生成key pair</span></span><br><span class="line"><span class="keyword">const</span> &#123; privateKey, publicKey &#125; = <span class="title function_">generateKeyPairSync</span>(<span class="string">&#x27;ec&#x27;</span>, &#123;</span><br><span class="line">  <span class="attr">namedCurve</span>: <span class="string">&#x27;sect239k1&#x27;</span>,</span><br><span class="line">&#125;);</span><br><span class="line"><span class="comment">// 指定hash算法</span></span><br><span class="line"><span class="keyword">const</span> sign = <span class="title function_">createSign</span>(<span class="string">&#x27;SHA256&#x27;</span>);</span><br><span class="line">sign.<span class="title function_">write</span>(<span class="string">&#x27;some data to sign&#x27;</span>);</span><br><span class="line">sign.<span class="title function_">end</span>();</span><br><span class="line"><span class="comment">// 使用私钥签名</span></span><br><span class="line"><span class="keyword">const</span> signature = sign.<span class="title function_">sign</span>(privateKey, <span class="string">&#x27;hex&#x27;</span>);</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> verify = <span class="title function_">createVerify</span>(<span class="string">&#x27;SHA256&#x27;</span>);</span><br><span class="line">verify.<span class="title function_">write</span>(<span class="string">&#x27;some data to sign&#x27;</span>);</span><br><span class="line">verify.<span class="title function_">end</span>();</span><br><span class="line"><span class="comment">// 验签</span></span><br><span class="line"><span class="variable language_">console</span>.<span class="title function_">log</span>(verify.<span class="title function_">verify</span>(publicKey, signature, <span class="string">&#x27;hex&#x27;</span>));</span><br><span class="line"><span class="comment">// Prints: trueCOPY</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>hash then encrypt<br>
+encrypt after<br>
+encrypt then hash</p>
+<p><a target="_blank" rel="noopener" href="https://crypto.stackexchange.com/questions/62163/hash-then-encrypt-or-encrypt-then-hash">rsa - Hash-Then-Encrypt or Encrypt-Then-Hash? - Cryptography Stack Exchange</a></p>
+<p>sign和encrypt有什么区别？<br>
+<a target="_blank" rel="noopener" href="https://stackoverflow.com/questions/454048/what-is-the-difference-between-encrypting-and-signing-in-asymmetric-encryption">rsa - What is the difference between encrypting and signing in asymmetric encryption? - Stack Overflow</a></p>
+<p>参考</p>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://www.reddit.com/r/cryptography/comments/xvom3z/im_trying_to_explain_how_a_digital_signature/">I’m trying to explain how a digital signature works to my friend and I got stuck… : r/cryptography</a><br>
+<a target="_blank" rel="noopener" href="https://nodejs.org/api/crypto.html#cryptocreatesignalgorithm-options:~:text=or%20Hmac.-,crypto.createSign(,-algorithm%5B%2C%20options%5D)">crypto.createSign(algorithm[, options])</a></p>
+</blockquote>
+<h3 id="EdDSA-Edwards-curve-Digital-Signature-Algorithm-签名算法">EdDSA(Edwards-curve Digital Signature Algorithm)签名算法</h3>
+<p>具体算法</p>
+<ul>
+<li>Ed25519: elliptic curve signing algorithm using EdDSA and Curve25519</li>
+</ul>
+<p>RFC<br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc8032">RFC 8032 - Edwards-Curve Digital Signature Algorithm (EdDSA)</a></p>
+<h3 id="RSASSA-PSS-RSA-Probabilistic-Signature-Scheme">RSASSA-PSS(RSA Probabilistic Signature Scheme)</h3>
+<p>一种数字签名算法</p>
+<h2 id="密钥协商-key-agreement">密钥协商(key agreement)</h2>
+<p>重在协商，相互施加影响。大多数不严谨的场景，密钥交换和密钥协商指的是一件事。利用某种机制在不安全的环境协商出只有双方才知道的一个数</p>
+<h2 id="密钥交换-key-exchange">密钥交换(key exchange)</h2>
+<p>叫密钥交换而不是密钥交换算法，是因为密钥交换是依赖其他算法一个过程，因此 key exchange 本身并不是算法</p>
+<p>密钥交换要解决的问题是，为了进行对称加解密，需要双方有相同的key。为了在不安全的信道协商出key，需要先引入非对称加密算法。</p>
+<p>key exchange一定基于公私钥加密，也就是非对称加密。<code>RSA</code>, <code>ECC椭圆曲线</code> 是实现上述公私钥加密的数学实现之一。</p>
+<p>密钥交换算法</p>
+<ul>
+<li>DH key exchange 家族</li>
+<li>RSA</li>
+</ul>
+<p><strong>密钥交换算法可以单独使用。在一些需要消息完整性（TLS场景）的场景，key exchange算法必须配合签名算法</strong><br>
+因此TLS cipher suite经常会有</p>
+<blockquote>
+<p>TLS_<strong>ECDHE_ECDSA</strong>_WITH_AES_256_CBC_SHA384<br>
+TLS_<strong>ECDHE_ECDSA</strong>_WITH_AES_128_CBC_SHA256<br>
+TLS_<strong>ECDHE_ECDSA</strong>_WITH_AES_256_CBC_SHA384<br>
+TLS_<strong>ECDHE_RSA</strong>_WITH_AES_128_GCM_SHA256<br>
+TLS_<strong>ECDHE_RSA</strong>_WITH_AES_256_GCM_SHA384<br>
+TLS_<strong>ECDHE_RSA</strong>_WITH_AES_128_CBC_SHA256<br>
+TLS_<strong>ECDHE_RSA</strong>_WITH_AES_256_CBC_SHA384<br>
+TLS_<strong>ECDHE_RSA</strong>_WITH_AES_128_CBC_SHA256<br>
+TLS_<strong>ECDHE_RSA</strong>_WITH_AES_256_CBC_SHA384<br>
+TLS_<strong>DHE_RSA</strong>_WITH_AES_128_GCM_SHA256</p>
+</blockquote>
+<h3 id="DH-Diffie–Hellman-key-exchange-家族">DH(Diffie–Hellman key exchange) 家族</h3>
+<blockquote>
+<p><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange">Diffie–Hellman key exchange - Wikipedia</a><br>
+DH是密钥交换的一种具体交换流程，利用已有公钥加密算法而实现的一种交换形式，因此都是非对称加密<br>
+<img src="/assets/2024-05-31.png" alt="" style="max-width: 400px;width: 100%;"></p>
+</blockquote>
+<h4 id="DHE-Diffie–Hellman-ephemeral">DHE(Diffie–Hellman ephemeral)</h4>
+<p>DH的升级版，E表明key是当时现场生成的，不会横跨现在和未来多个会话使用</p>
+<p>TLS中配对使用的方式</p>
+<ul>
+<li>DHE-RSA: DHE key exchange 并配合 RSA 签名算法使用</li>
+<li>DHE-DSA: DHE key exchange 并配合 RSA</li>
+</ul>
+<h4 id="ECDH-Elliptic-curve-Diffie–Hellman">ECDH(Elliptic-curve Diffie–Hellman)</h4>
+<p>通常用于密钥协商。基于椭圆曲线实现的DH密钥交换形式，不仅仅是加密过程，还定义了key的交换方式。<br>
+可以这么理解，如果说DH算法定义的公钥生成规则是 <code>g^(私钥) mod p = 公钥</code><br>
+那ECDH使用椭圆曲线替代了上述计算规则，计算方式变为在椭圆曲线上求解，相比RSA，ECC所用的密钥更短，运行速度更快</p>
+<blockquote>
+<p>ECC is more secure than RSA and is in its adaptive phase. Its usage is expected to scale up in the near future. RSA requires much bigger key lengths to implement encryption. ECC requires much shorter key lengths compared to RSA.</p>
+</blockquote>
+<h4 id="ECDHE-Elliptic-curve-Diffie–Hellman-ephemeral">ECDHE(Elliptic-curve Diffie–Hellman ephemeral)</h4>
+<p>比ECDH多了E(短暂的，ephemeral)。生成的key是短暂的很快失效，不再具备生成的session key解密之前数据的能力。具有前向安全性。<br>
+因此https场景中，key是private key，而session key是key exchange之后的用于对称加解密的key。哪怕private key泄漏，之前的数据也无法被解密</p>
+<p>配对使用方式</p>
+<ul>
+<li>ECDHE-RSA: ECDHE key exchange 并配合 RSA签名算法使用</li>
+<li>ECDHE-ECDSA: ECDHE key exchange 并配合 ECDSA 签名算法使用</li>
+</ul>
+<p>如果以ECDHE进行，serverhello选择的TLS1.2套件类似 <code>TLS_ECDHE_RSA_WITH_RSA_128_GCM_SHA256</code><br>
+server key exchange 会为ECDHE提供ECDH 参数<br>
+<img src="/assets/2024-06-03-4.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="AEAD-加解密的同时能保证消息完整性-authenticated-encryption-with-associated-data">AEAD(加解密的同时能保证消息完整性/authenticated encryption with associated data)</h2>
+<p>AE（authenticated Encryption），AD（associated data）</p>
+<p>使用场景如下</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[encrypted-data][encrypted-data&#x27;s MAC][destination address]</span><br><span class="line">|&lt;-------AE(都是加密的)---------------&gt;|&lt;-----AD(明文)------&gt;|</span><br></pre></td></tr></table></figure>
+<p>其实AE就够了，但某些场景比如网络数据包，destination address不能加密，否则中间人无法路由，只能暴露，但需要加完整性检查</p>
+<p>AEAD具体算法实现</p>
+<ul>
+<li>AES_128_GCM</li>
+<li>AES_256_GCM</li>
+</ul>
+<h2 id="HASH算法-SHA-XXX">HASH算法(SHA-XXX)</h2>
+<p>SHA-1，SHA-2家族</p>
+<p>SHA384是SHA-2长度为384bit的hash算法</p>
+<h2 id="MAC-message-authentication-code">MAC(message authentication code)</h2>
+<p>MAC是一个概念，用来检验消息完成性的一小段数据，类似tcp的checksum。</p>
+<p>可以用块加密算法实现，比如AES-GCM。根据原文生成一段加密后的数据，其他人也可以加密，并验证</p>
+<p>而用hash函数(SHA-1，SHA-2)实现MAC的方式称为 HMAC</p>
+<h3 id="HMAC-hash-based-message-authentication-code">HMAC(hash-based message authentication code)</h3>
+<p>和数字签名很像，hash时引入secret生成digest<br>
+数字签名依赖非对称加密的公私钥，为了能安全分发公钥，需要PKI(public key infrastructure)体系保驾护航<br>
+而HMAC用的secret双方都知道</p>
+<h2 id="KDF-密钥派生函数-key-derivation-function">KDF( 密钥派生函数/key derivation function)</h2>
+<p>目的：有时输入的key密码强度太低，比如 <code>helloworld</code>，无法满足很多加密算法的密钥长度和强度要求，需要一种机制将输入的key进行计算，获得密码学意义上的高强度key</p>
+<h3 id="HKDF-HMAC-based-Extract-and-Expand-Key-Derivation-Function">HKDF(HMAC-based Extract-and-Expand Key Derivation Function)</h3>
+<p>RFC全文不长，可以通读<br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc5869">RFC 5869 - HMAC-based Extract-and-Expand Key Derivation Function (HKDF)</a></p>
+<p>TLS HKDF的H是 ciphersuite 最后指定的hash算法</p>
+<h2 id="TLS1-3-pre-shared-key-extension-PSK">TLS1.3-pre-shared  key extension(PSK)</h2>
+<p><img src="/assets/2024-05-31-2.png" alt="" style="max-width: 400px;width: 100%;"><br>
+这就是常说的TLS 1.3 0RTT握手。client携带PKS尝试与server恢复会话，如果server可以恢复，serverhello也会携带PSK extension，指定选中的key。接下来正常收发数据</p>
+<p>根据RFC，如果client 有 PSK extension，那也必须有psk-key-exchange-modes<br>
+<img src="/assets/2024-06-01-1.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<blockquote>
+<p>A <strong>client MUST provide a “psk_key_exchange_modes” extension if it<br>
+offers a “pre_shared_key” extension</strong>.  If clients offer<br>
+“pre_shared_key” without a “psk_key_exchange_modes” extension,<br>
+servers MUST abort the handshake.  Servers MUST NOT select a key<br>
+exchange mode that is not listed by the client.  This extension also<br>
+restricts the modes for use with PSK resumption.  Servers SHOULD NOT<br>
+send NewSessionTicket with tickets that are not compatible with the<br>
+advertised modes; however, if a server does so, the impact will just<br>
+be that the client’s attempts at resumption fail.<br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc8446#page-55">TLS-1.3 pre-shared key</a></p>
+</blockquote>
+<h2 id="session-id-session-ticket-psk区别">session id-session ticket-psk区别</h2>
+<p>session id需要server维护状态<br>
+session ticket将关键数据加密发给client，client请求携带session ticket extension进行连接复用<br>
+TLS1.3废弃了session ticket，并引入psk。<br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc8446#section-2.2">Resumption and Pre-Shared Key (PSK)</a></p>
+<blockquote>
+<p>This document supersedes and obsoletes previous versions of TLS,<br>
+including version 1.2 [RFC5246].  <strong>It also obsoletes the TLS ticket<br>
+mechanism defined in [RFC5077] and replaces it with the mechanism<br>
+defined in Section 2.2.</strong>  Because TLS 1.3 changes the way keys are<br>
+derived, it updates [RFC5705] as described in Section 7.5.  It also<br>
+changes how Online Certificate Status Protocol (OCSP) messages are<br>
+carried and therefore updates [RFC6066] and obsoletes [RFC6961] as<br>
+described in Section 4.4.2.1.<br>
+Although TLS PSKs can be established out of band, PSKs can also be<br>
+established in a previous connection and then used to establish a new<br>
+connection (“session resumption” or “resuming” with a PSK).  Once a<br>
+handshake has completed, the server can send the client a PSK<br>
+identity that corresponds to a unique key derived from the initial<br>
+handshake (see Section 4.6.1).  The client can then use that PSK<br>
+identity in future handshakes to negotiate the use of the associated<br>
+PSK.  If the server accepts the PSK, then the security context of the<br>
+new connection is cryptographically tied to the original connection<br>
+and the key derived from the initial handshake is used to bootstrap<br>
+the cryptographic state instead of a full handshake.  <strong>In TLS 1.2 and<br>
+below, this functionality was provided by “session IDs” and “session<br>
+tickets” [RFC5077].  Both mechanisms are obsoleted in TLS 1.3.</strong></p>
+</blockquote>
+<h2 id="TLS1-3-key-share-extension">TLS1.3-key share extension</h2>
+<p>DH虽然只有1RTT，但传递的数据还是用public key加密了。具体实现是 tls1.3的key share extension<br>
+TLS1.3主体保持与1.2的兼容，如果最终选定TLS1.3握手，key share则必须<br>
+client hello阶段client通过key share extension发送很多类型的public key</p>
+<h2 id="TLS1-2-premaster-secret">TLS1.2-premaster secret</h2>
+<ul>
+<li>如果TLS key exchange 以RSA算法进行，那premaster secret 是client exchange 阶段以server public key加密的 48字节数据<br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc5246#section-8.1:~:text=byte%20pre_master_secret%20is%20generated%20by%20the%20client">tls 1.2 的第三个随机数</a><br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc5246#appendix-F.1.1.2">RSA key exchange逐渐弃用，没有前向安全性，建议用DHE</a></li>
+<li>如果以DH密钥交换方式进行，premaster secret是通过DH 1RTT交换双方public后推导出的数据（server hello public key + client key exchange public key）<br>
+<img src="/assets/2024-06-03-2.png" alt="" style="max-width: 400px;width: 100%;"><br>
+<img src="/assets/2024-06-03.png" alt="" style="max-width: 400px;width: 100%;"></li>
+</ul>
+<h2 id="master-secret">master secret</h2>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">master_secret = PRF(pre_master_secret, &quot;master secret&quot;,</span><br><span class="line">                  ClientHello.random + ServerHello.random)</span><br><span class="line">                  [0..47];</span><br></pre></td></tr></table></figure>
+<p><a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc5246#section-6.3:~:text=The%20master%20secret%20is%20expanded%20into%20a%20sequence%20of%20secure%20bytes">master secret 用以生成TLS传输过程中各种key</a></p>
+<ul>
+<li>client write MAC key</li>
+<li>server write MAC key</li>
+<li>client write encryption key</li>
+<li>server write encryption key</li>
+</ul>
+<blockquote>
+<p>To generate the key material, compute</p>
+<pre><code>  key_block = PRF(SecurityParameters.master_secret,
+                  &quot;key expansion&quot;,
+                  SecurityParameters.server_random +
+                  SecurityParameters.client_random);
+</code></pre>
+<p>until enough output has been generated.  Then, the key_block is<br>
+partitioned as follows:</p>
+<pre><code>  client_write_MAC_key[SecurityParameters.mac_key_length]
+  server_write_MAC_key[SecurityParameters.mac_key_length]
+  client_write_key[SecurityParameters.enc_key_length]
+  server_write_key[SecurityParameters.enc_key_length]
+  client_write_IV[SecurityParameters.fixed_iv_length]
+  server_write_IV[SecurityParameters.fixed_iv_length]
+</code></pre>
+</blockquote>
+<p>以上这些key都依据master secret key生成，又称为 session key。</p>
+<p>生成过程依赖PRF（类似HKDF）<br>
+<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc5246#section-8.1:~:text=To%20generate%20the%20key%20material%2C%20compute">RFC 5246 - The Transport Layer Security (TLS) Protocol Version 1.2</a></p>
+<h3 id="session-key">session key</h3>
+<p>session key 是会话中用到的，根据KDF生成的各种会话key<br>
+<img src="/assets/2024-05-31-3.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h2 id="FAQ">FAQ</h2>
+<h3 id="TLS-1-2-和-TLS-1-3-从cipher-suites上有什么不同">TLS 1.2 和 TLS 1.3 从cipher suites上有什么不同</h3>
+<p>tls1.2的一个算法 TLS_RSA_WITH_AES_256_CBC_SHA<br>
+tls1.3 的一个算法 TLS_AES_128_GCM_SHA256</p>
+<h3 id="TLS1-3的cipher-suite为什么比TLS1-2的一些短？">TLS1.3的cipher suite为什么比TLS1.2的一些短？</h3>
+<p>TLS1.2</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_DHE_RSA_WITH_AES_128_GCM_SHA256</span><br><span class="line">TLS_DHE_RSA_WITH_AES_256_GCM_SHA384</span><br><span class="line">TLS_DHE_RSA_WITH_AES_128_CBC_SHA</span><br><span class="line">TLS_DHE_RSA_WITH_AES_256_CBC_SHA</span><br><span class="line">TLS_DHE_RSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_DHE_RSA_WITH_AES_256_CBC_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305</span><br><span class="line">TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305</span><br></pre></td></tr></table></figure>
+<p>TLS1.3</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">TLS_AES_256_GCM_SHA384</span><br><span class="line">TLS_CHACHA20_POLY1305_SHA256</span><br><span class="line">TLS_AES_128_GCM_SHA256</span><br><span class="line">TLS_AES_128_CCM_8_SHA256</span><br><span class="line">TLS_AES_128_CCM_SHA256</span><br></pre></td></tr></table></figure>
+<p>拿 1.3 的 <code>TLS_AES_256_GCM_SHA384</code> 和tls1.2的 <code>TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384</code><br>
+<img src="/assets/2024-05-31-1.png" alt="" style="max-width: 400px;width: 100%;"><br>
+cipher suite比1.2少了密钥交换和签名算法<br>
+是因为signature algorithm放到了extension，支持多个，server选其一<br>
+<a target="_blank" rel="noopener" href="https://security.stackexchange.com/questions/257776/how-are-key-exchange-and-signature-algorithms-negotiated-in-tls-1-3">cipher selection - How are key exchange and signature algorithms negotiated in TLS 1.3 - Information Security Stack Exchange</a></p>
+<h3 id="tls1-2">tls1.2</h3>
+<h4 id="为什么tls1-2的套件的key-exchange-和-signature-用了两个不同的有两个非对称算法，">为什么tls1.2的套件的key exchange 和 signature 用了两个不同的有两个非对称算法，</h4>
+<p><img src="/assets/2024-05-31-1.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h4 id="TLS1-2弃用RSA作为key-exchange">TLS1.2弃用RSA作为key exchange</h4>
+<p>拿现在流行的TLS1.2 ciphersuite 举例<br>
+<a target="_blank" rel="noopener" href="https://ssl-config.mozilla.org/#server=nginx&amp;version=1.17.7&amp;config=intermediate&amp;openssl=1.1.1k&amp;guideline=5.7">Mozilla SSL Configuration Generator</a></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384</span><br><span class="line">TLS_DHE_RSA_WITH_AES_128_GCM_SHA256</span><br><span class="line">TLS_DHE_RSA_WITH_AES_256_GCM_SHA384</span><br><span class="line">TLS_DHE_RSA_WITH_AES_128_CBC_SHA</span><br><span class="line">TLS_DHE_RSA_WITH_AES_256_CBC_SHA</span><br><span class="line">TLS_DHE_RSA_WITH_AES_128_CBC_SHA256</span><br><span class="line">TLS_DHE_RSA_WITH_AES_256_CBC_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256</span><br><span class="line">TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305</span><br><span class="line">TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256</span><br><span class="line">TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305</span><br></pre></td></tr></table></figure>
+<p>可以看到 <code>TLS_FOO</code> 的 FOO 都是末尾都是<code>DHE</code>，没有 <code>TLS_RSA_WITH_AES_256_CBC_SHA</code> 这些套件了。<br>
+RSA作为key exchange算法没有前向安全性，如果泄露私钥，之前的会话都能解密。因此大家都弃用了RSA作为密钥交换算法，转而使用前向安全的DHE<br>
+<a target="_blank" rel="noopener" href="https://www.reddit.com/r/networking/comments/16vcnh4/chrome_says_rsa_key_exchange_is_obsolete_under/">reddit.com/r/networking/comments/16vcnh4/chrome_says_rsa_key_exchange_is_obsolete_under/</a><br>
+<a target="_blank" rel="noopener" href="https://www.ietf.org/archive/id/draft-ietf-tls-deprecate-obsolete-kex-02.html#name-rsa">Deprecating Obsolete Key Exchange Methods in TLS 1.2</a></p>
+<h3 id="TLS-1-3">TLS 1.3</h3>
+<h4 id="TLS1-3如何防止中间人攻击">TLS1.3如何防止中间人攻击</h4>
+<h4 id="TLS1-3-key-exchange-步骤">TLS1.3 key exchange 步骤</h4>
+<blockquote>
+<p>In the Key Exchange phase, the client sends the ClientHello<br>
+(Section 4.1.2) message, which contains a random nonce<br>
+(ClientHello.random); its offered protocol versions; a list of<br>
+symmetric cipher/HKDF hash pairs; either a set of Diffie-Hellman key<br>
+shares (in the “key_share” (Section 4.2.8) extension), a set of<br>
+pre-shared key labels (in the “pre_shared_key” (Section 4.2.11)<br>
+extension), or both; and potentially additional extensions.<br>
+Additional fields and/or messages may also be present for middlebox<br>
+compatibility.<br>
+The server processes the ClientHello and determines the appropriate<br>
+cryptographic parameters for the connection.  It then responds with<br>
+its own ServerHello (Section 4.1.3), which indicates the negotiated<br>
+connection parameters.  The combination of the ClientHello and the<br>
+ServerHello determines the shared keys.  <strong>If (EC)DHE key establishment<br>
+is in use, then the ServerHello contains a “key_share” extension with<br>
+the server’s ephemeral Diffie-Hellman share; the server’s share MUST<br>
+be in the same group as one of the client’s shares.  If PSK key<br>
+establishment is in use, then the ServerHello contains a<br>
+“pre_shared_key” extension indicating which of the client’s offered<br>
+PSKs was selected.</strong>  Note that implementations can use (EC)DHE and PSK<br>
+together, in which case both extensions will be supplied.</p>
+</blockquote>
+<p><img src="/assets/2024-06-01.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<p><img src="/assets/2024-06-02-98.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h4 id="为什么TLS1-3会有Client-random和Server-random">为什么TLS1.3会有Client.random和Server.random</h4>
+<p>client并不知道server是否支持tls 1.3，为了兼容且正常握手，client会按照1.2的要求进行握手。并提供1.3需要的key share extension。使得clienthello同时支持1.2/1.3协商。</p>
+<p>serverhello决定最后采用多少版本握手。如果1.2，则random末尾8字节用固定数据。是防止1.2/1.3的client/server被要求降低版本到1.1及以下导致降级攻击</p>
+<blockquote>
+<p>TLS 1.3 has a <strong>downgrade protection mechanism</strong> embedded in the server’s<br>
+random value.  TLS 1.3 servers which negotiate TLS 1.2 or below in<br>
+response to a ClientHello MUST set the last 8 bytes of their Random<br>
+value specially in their ServerHello.</p>
+<p>If negotiating TLS 1.2, TLS 1.3 servers MUST set the last 8 bytes of<br>
+their Random value to the bytes:</p>
+<pre><code> 44 4F 57 4E 47 52 44 01
+</code></pre>
+<p>If negotiating TLS 1.1 or below, TLS 1.3 servers MUST, and TLS 1.2<br>
+servers SHOULD, set the last 8 bytes of their ServerHello.Random<br>
+value to the bytes:</p>
+<pre><code> 44 4F 57 4E 47 52 44 00
+</code></pre>
+<p><strong>TLS 1.3 clients receiving a ServerHello indicating TLS 1.2 or below<br>
+MUST check that the last 8 bytes are not equal to either of these<br>
+values. TLS 1.2 clients SHOULD also check that the last 8 bytes are<br>
+not equal to the second value if the ServerHello indicates TLS 1.1 or<br>
+below.  If a match is found, the client MUST abort the handshake</strong> with<br>
+an “illegal_parameter” alert.  This mechanism provides limited<br>
+protection against downgrade attacks over and above what is provided<br>
+by the Finished exchange: because the ServerKeyExchange, a message<br>
+present in TLS 1.2 and below, includes a signature over both random<br>
+values, it is not possible for an active attacker to modify the</p>
+<p>Rescorla                     Standards Track                   [Page 32]</p>
+<p>RFC 8446                           TLS                       August 2018</p>
+<p>random values without detection as long as ephemeral ciphers are<br>
+used.  It does not provide downgrade protection when static RSA<br>
+is used.</p>
+</blockquote>
+<h4 id="TLS1-3-supported-group-extension">TLS1.3 supported-group extension</h4>
+<p>client hello <code>supported group</code> extension 给出支持的 key exchange 椭圆曲线方程，比如curve-25519曲线<br>
+<code>y2 = x3 + 486662x2 + x</code><br>
+<img src="/assets/2024-06-02-97.png" alt="" style="max-width: 400px;width: 100%;"><br>
+<img src="/assets/2024-06-02.png" alt="" style="max-width: 400px;width: 100%;"><br>
+并通过key share给出不同曲线方程用到的函数参数<br>
+<img src="/assets/2024-06-02-2.png" alt="" style="max-width: 400px;width: 100%;"></p>
+<h4 id="证书里的public-key有什么用？">证书里的public key有什么用？</h4>
+<p>1.2握手第三步骤，client的pre master secret通过server certificate 的public key加密传给server。这叫公钥加密，私钥解密<br>
+1.3握手1RTT，server hello之后的内容就被加密了，所以server早就协商出了密钥。client收到证书public key还有什么用呢？<br>
+TLS1.3引入 CertificateVerify message，在certificate之后发送，CertificateVerify 会包含 <code>certificate private key+之前所发全部内容的hash</code> 做的签名，client用证书里的public key验签，来确保之前的消息都未被修改</p>
+<h4 id="TLS废弃RSA做kx，证书还有什么用？">TLS废弃RSA做kx，证书还有什么用？</h4>
+<p>这涉及到rsa证书和ecc证书区别是什么<br>
+rsa和ecc都属于非对称（公钥）加密算法，rsa证书采用rsa做非对称加密加密。ecc采用椭圆曲线做非对称加密</p>
+<p>TLS1.2 RSA kx涉及到pre-master-secret加密，server用私钥解密。此时证书有kx和身份验证能力<br>
+废弃RSA kx后，TLS1.2，TLS1.3使用RSA，只使用的RSA的身份验证能力。算个数（或者handshake transcript）用证书的public key加密，或者private key签名，对端用private key解密，或者public key验签名</p>
+<h2 id="握手涉及到加解密-签名的地方">握手涉及到加解密/签名的地方</h2>
+<p>TLS1.3 CertificateVerify</p>
+<h2 id="TLS1-3握手详解">TLS1.3握手详解</h2>
+<p>TODO 必读，然后总结出来</p>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://tls13.xargs.org/#client-key-exchange-generation">The Illustrated TLS 1.3 Connection: Every Byte Explained</a></li>
+<li><a target="_blank" rel="noopener" href="https://security.stackexchange.com/questions/257776/how-are-key-exchange-and-signature-algorithms-negotiated-in-tls-1-3">cipher selection - How are key exchange and signature algorithms negotiated in TLS 1.3 - Information Security Stack Exchange</a></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/net/" rel="tag"># net</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2023/12/14/66/" rel="prev" title="LVS流量转发模式">
+      <i class="fa fa-chevron-left"></i> LVS流量转发模式
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%B9%E7%A7%B0%E5%8A%A0%E5%AF%86-symmetric-cryptography"><span class="nav-number">2.</span> <span class="nav-text">对称加密(symmetric cryptography)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%9D%9E%E5%AF%B9%E7%A7%B0%E5%8A%A0%E5%AF%86-asymmetric-cryptography"><span class="nav-number">3.</span> <span class="nav-text">非对称加密(asymmetric cryptography)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E5%AD%97%E7%AD%BE%E5%90%8D%E7%AE%97%E6%B3%95-Digital-Signature-Algorithm-DSA"><span class="nav-number">4.</span> <span class="nav-text">数字签名算法(Digital Signature Algorithm&#x2F;DSA)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#EdDSA-Edwards-curve-Digital-Signature-Algorithm-%E7%AD%BE%E5%90%8D%E7%AE%97%E6%B3%95"><span class="nav-number">4.1.</span> <span class="nav-text">EdDSA(Edwards-curve Digital Signature Algorithm)签名算法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#RSASSA-PSS-RSA-Probabilistic-Signature-Scheme"><span class="nav-number">4.2.</span> <span class="nav-text">RSASSA-PSS(RSA Probabilistic Signature Scheme)</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%86%E9%92%A5%E5%8D%8F%E5%95%86-key-agreement"><span class="nav-number">5.</span> <span class="nav-text">密钥协商(key agreement)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%86%E9%92%A5%E4%BA%A4%E6%8D%A2-key-exchange"><span class="nav-number">6.</span> <span class="nav-text">密钥交换(key exchange)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#DH-Diffie%E2%80%93Hellman-key-exchange-%E5%AE%B6%E6%97%8F"><span class="nav-number">6.1.</span> <span class="nav-text">DH(Diffie–Hellman key exchange) 家族</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#DHE-Diffie%E2%80%93Hellman-ephemeral"><span class="nav-number">6.1.1.</span> <span class="nav-text">DHE(Diffie–Hellman ephemeral)</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ECDH-Elliptic-curve-Diffie%E2%80%93Hellman"><span class="nav-number">6.1.2.</span> <span class="nav-text">ECDH(Elliptic-curve Diffie–Hellman)</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ECDHE-Elliptic-curve-Diffie%E2%80%93Hellman-ephemeral"><span class="nav-number">6.1.3.</span> <span class="nav-text">ECDHE(Elliptic-curve Diffie–Hellman ephemeral)</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#AEAD-%E5%8A%A0%E8%A7%A3%E5%AF%86%E7%9A%84%E5%90%8C%E6%97%B6%E8%83%BD%E4%BF%9D%E8%AF%81%E6%B6%88%E6%81%AF%E5%AE%8C%E6%95%B4%E6%80%A7-authenticated-encryption-with-associated-data"><span class="nav-number">7.</span> <span class="nav-text">AEAD(加解密的同时能保证消息完整性&#x2F;authenticated encryption with associated data)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#HASH%E7%AE%97%E6%B3%95-SHA-XXX"><span class="nav-number">8.</span> <span class="nav-text">HASH算法(SHA-XXX)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#MAC-message-authentication-code"><span class="nav-number">9.</span> <span class="nav-text">MAC(message authentication code)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#HMAC-hash-based-message-authentication-code"><span class="nav-number">9.1.</span> <span class="nav-text">HMAC(hash-based message authentication code)</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#KDF-%E5%AF%86%E9%92%A5%E6%B4%BE%E7%94%9F%E5%87%BD%E6%95%B0-key-derivation-function"><span class="nav-number">10.</span> <span class="nav-text">KDF( 密钥派生函数&#x2F;key derivation function)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#HKDF-HMAC-based-Extract-and-Expand-Key-Derivation-Function"><span class="nav-number">10.1.</span> <span class="nav-text">HKDF(HMAC-based Extract-and-Expand Key Derivation Function)</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#TLS1-3-pre-shared-key-extension-PSK"><span class="nav-number">11.</span> <span class="nav-text">TLS1.3-pre-shared  key extension(PSK)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#session-id-session-ticket-psk%E5%8C%BA%E5%88%AB"><span class="nav-number">12.</span> <span class="nav-text">session id-session ticket-psk区别</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#TLS1-3-key-share-extension"><span class="nav-number">13.</span> <span class="nav-text">TLS1.3-key share extension</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#TLS1-2-premaster-secret"><span class="nav-number">14.</span> <span class="nav-text">TLS1.2-premaster secret</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#master-secret"><span class="nav-number">15.</span> <span class="nav-text">master secret</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#session-key"><span class="nav-number">15.1.</span> <span class="nav-text">session key</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">16.</span> <span class="nav-text">FAQ</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#TLS-1-2-%E5%92%8C-TLS-1-3-%E4%BB%8Ecipher-suites%E4%B8%8A%E6%9C%89%E4%BB%80%E4%B9%88%E4%B8%8D%E5%90%8C"><span class="nav-number">16.1.</span> <span class="nav-text">TLS 1.2 和 TLS 1.3 从cipher suites上有什么不同</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#TLS1-3%E7%9A%84cipher-suite%E4%B8%BA%E4%BB%80%E4%B9%88%E6%AF%94TLS1-2%E7%9A%84%E4%B8%80%E4%BA%9B%E7%9F%AD%EF%BC%9F"><span class="nav-number">16.2.</span> <span class="nav-text">TLS1.3的cipher suite为什么比TLS1.2的一些短？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#tls1-2"><span class="nav-number">16.3.</span> <span class="nav-text">tls1.2</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88tls1-2%E7%9A%84%E5%A5%97%E4%BB%B6%E7%9A%84key-exchange-%E5%92%8C-signature-%E7%94%A8%E4%BA%86%E4%B8%A4%E4%B8%AA%E4%B8%8D%E5%90%8C%E7%9A%84%E6%9C%89%E4%B8%A4%E4%B8%AA%E9%9D%9E%E5%AF%B9%E7%A7%B0%E7%AE%97%E6%B3%95%EF%BC%8C"><span class="nav-number">16.3.1.</span> <span class="nav-text">为什么tls1.2的套件的key exchange 和 signature 用了两个不同的有两个非对称算法，</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#TLS1-2%E5%BC%83%E7%94%A8RSA%E4%BD%9C%E4%B8%BAkey-exchange"><span class="nav-number">16.3.2.</span> <span class="nav-text">TLS1.2弃用RSA作为key exchange</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#TLS-1-3"><span class="nav-number">16.4.</span> <span class="nav-text">TLS 1.3</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#TLS1-3%E5%A6%82%E4%BD%95%E9%98%B2%E6%AD%A2%E4%B8%AD%E9%97%B4%E4%BA%BA%E6%94%BB%E5%87%BB"><span class="nav-number">16.4.1.</span> <span class="nav-text">TLS1.3如何防止中间人攻击</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#TLS1-3-key-exchange-%E6%AD%A5%E9%AA%A4"><span class="nav-number">16.4.2.</span> <span class="nav-text">TLS1.3 key exchange 步骤</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88TLS1-3%E4%BC%9A%E6%9C%89Client-random%E5%92%8CServer-random"><span class="nav-number">16.4.3.</span> <span class="nav-text">为什么TLS1.3会有Client.random和Server.random</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#TLS1-3-supported-group-extension"><span class="nav-number">16.4.4.</span> <span class="nav-text">TLS1.3 supported-group extension</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%AF%81%E4%B9%A6%E9%87%8C%E7%9A%84public-key%E6%9C%89%E4%BB%80%E4%B9%88%E7%94%A8%EF%BC%9F"><span class="nav-number">16.4.5.</span> <span class="nav-text">证书里的public key有什么用？</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#TLS%E5%BA%9F%E5%BC%83RSA%E5%81%9Akx%EF%BC%8C%E8%AF%81%E4%B9%A6%E8%BF%98%E6%9C%89%E4%BB%80%E4%B9%88%E7%94%A8%EF%BC%9F"><span class="nav-number">16.4.6.</span> <span class="nav-text">TLS废弃RSA做kx，证书还有什么用？</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8F%A1%E6%89%8B%E6%B6%89%E5%8F%8A%E5%88%B0%E5%8A%A0%E8%A7%A3%E5%AF%86-%E7%AD%BE%E5%90%8D%E7%9A%84%E5%9C%B0%E6%96%B9"><span class="nav-number">17.</span> <span class="nav-text">握手涉及到加解密&#x2F;签名的地方</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#TLS1-3%E6%8F%A1%E6%89%8B%E8%AF%A6%E8%A7%A3"><span class="nav-number">18.</span> <span class="nav-text">TLS1.3握手详解</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="超超哥哥"
+      src="/favicon.ico">
+  <p class="site-author-name" itemprop="name">超超哥哥</p>
+  <div class="site-description" itemprop="description">好奇心</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">60</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/taikulawo" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;taikulawo" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">超超哥哥</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
